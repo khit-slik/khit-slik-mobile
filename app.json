@@ -1,0 +1,72 @@
+{
+  "expo": {
+    "name": "AutoShop",
+    "slug": "commercial-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/logo.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.otas.autoshop"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1F1FB8",
+        "foregroundImage": "./assets/logo.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.otas.autoshop",
+      "permissions": [
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BLUETOOTH_SCAN"
+      ],
+      "runtimeVersion": {
+        "policy": "fingerprint"
+      },
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/logo.png"
+    },
+    "plugins": [
+      "expo-status-bar",
+      "expo-router",
+      "expo-secure-store",
+      "@react-native-community/datetimepicker",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#1F1FB8",
+          "defaultChannel": "low-stock-alerts"
+        }
+      ],
+      "./plugins/withBluetoothPermissions",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#1F1FB8",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain"
+        }
+      ]
+    ],
+    "scheme": "autoshop",
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c94c1639-8ce0-42ed-a89b-3fbbe80dc235"
+      }
+    },
+    "owner": "acehidan"
+  }
+}
