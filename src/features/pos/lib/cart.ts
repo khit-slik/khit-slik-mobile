@@ -16,7 +16,7 @@ export type StockFilter = 'All' | 'InStock' | 'LowStock' | 'OutOfStock';
 export const LOW_STOCK_THRESHOLD = 5;
 
 // Hidden from the product grid, as on the web POS
-export const HIDDEN_PRODUCT_IDS = ['69a15d55218ec5ff9a3fe4a3'];
+export const HIDDEN_PRODUCT_IDS: string[] = [];
 
 export const getShelfStock = (product: PosProduct) => product.availableQuantity ?? product.quantity ?? 0;
 

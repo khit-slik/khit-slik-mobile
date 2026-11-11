@@ -62,6 +62,22 @@ export default function RootLayout() {
           name="order-edit/success"
           options={{ presentation: 'transparentModal', animation: 'fade', gestureEnabled: false }}
         />
+        {/* Pre-orders: the POS grid and popups on a pre-order form of their own, new and edit */}
+        <Stack.Screen name="pre-order/index" />
+        <Stack.Screen name="pre-order/checkout" options={{ presentation: 'transparentModal', animation: 'fade' }} />
+        <Stack.Screen
+          name="pre-order/success"
+          options={{ presentation: 'transparentModal', animation: 'fade', gestureEnabled: false }}
+        />
+        <Stack.Screen name="pre-order-edit/[id]" options={{ gestureEnabled: false }} />
+        <Stack.Screen
+          name="pre-order-edit/checkout"
+          options={{ presentation: 'transparentModal', animation: 'fade' }}
+        />
+        <Stack.Screen
+          name="pre-order-edit/success"
+          options={{ presentation: 'transparentModal', animation: 'fade', gestureEnabled: false }}
+        />
       </Stack>
       <AnimatedSplash />
       <Toast />

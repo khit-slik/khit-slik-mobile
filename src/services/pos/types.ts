@@ -133,6 +133,9 @@ export interface CreditPersona {
   name: string;
   phone: string;
   address?: string;
+  // The customer's delivery region / Yangon township codes (a pre-order's delivery starts from them)
+  region?: string | null;
+  township?: string | null;
   blacklist: boolean;
   blacklistReason: string | null;
   blacklistDate: string | null;

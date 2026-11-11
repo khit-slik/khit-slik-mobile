@@ -6,7 +6,6 @@ import {
   filterProducts,
   getAvailableStock,
   getCartQty,
-  HIDDEN_PRODUCT_IDS,
   removeItem,
   setItemQty,
 } from '../cart';
@@ -156,11 +155,10 @@ describe('filterProducts', () => {
     product('negative', { availableQuantity: -1 }),
     product('five', { availableQuantity: 5 }),
     product('six', { availableQuantity: 6 }),
-    product(HIDDEN_PRODUCT_IDS[0], { availableQuantity: 50 }),
   ];
   const ids = (list: PosProduct[]) => list.map((p) => p._id);
 
-  it('always hides the hidden products', () => {
+  it('lists every product for the All filter', () => {
     expect(ids(filterProducts(products, 'All'))).toEqual(['zero', 'negative', 'five', 'six']);
   });
 

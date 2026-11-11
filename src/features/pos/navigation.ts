@@ -13,7 +13,7 @@ export const showWebPage = (path: string) => {
 export const goToWebLogin = () => showWebPage('/login');
 
 // Back to the previous screen, or to `fallback` when opened from a deep link with nothing behind it
-export const goBackOr = (fallback: '/' | '/pos') => {
+export const goBackOr = (fallback: '/' | '/pos' | '/pre-order') => {
   if (router.canGoBack()) router.back();
   else router.replace(fallback);
 };

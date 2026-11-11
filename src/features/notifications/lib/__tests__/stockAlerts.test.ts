@@ -1,5 +1,4 @@
 import type { PosProduct } from '../../../../services/pos/types';
-import { HIDDEN_PRODUCT_IDS } from '../../../pos/lib/cart';
 import {
   classifyStock,
   countAlerts,
@@ -63,9 +62,8 @@ describe('toAlertItem', () => {
     expect(toAlertItem(product('b', 0), rules)?.id).toBe('out_b');
   });
 
-  it('ignores healthy and hidden products', () => {
+  it('ignores healthy products', () => {
     expect(toAlertItem(product('c', 20), rules)).toBeNull();
-    expect(toAlertItem(product(HIDDEN_PRODUCT_IDS[0], 0), rules)).toBeNull();
   });
 
   it('falls back when names and categories are missing', () => {

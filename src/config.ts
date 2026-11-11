@@ -1,9 +1,13 @@
-export const WEB_APP_URL = 'https://commercial.autoshopmm.com';
+// Override with EXPO_PUBLIC_WEB_APP_URL while developing, so the WebView and the native POS
+// screens log in to and read from the same backend (a token from one backend is rejected by another).
+export const WEB_APP_URL = (
+  process.env.EXPO_PUBLIC_WEB_APP_URL || 'https://khit-slik-frontend.pages.dev'
+).replace(/\/+$/, '');
 
 // Override per build with EXPO_PUBLIC_API_BASE_URL (e.g. a local backend while developing).
 export const API_BASE_URL = (
   process.env.EXPO_PUBLIC_API_BASE_URL ||
-  'https://commercial-backend-production.up.railway.app/api/v1'
+  '' // TODO: khit-slik production backend URL (e.g. 'https://<khit-slik-backend>/api/v1')
 ).replace(/\/+$/, '');
 
 export const API_TIMEOUT_MS = 20000;

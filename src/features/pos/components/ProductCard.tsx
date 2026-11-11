@@ -12,13 +12,24 @@ interface Props {
   originalQty?: number;
   // Columns in the grid; keeps a lone card on the last row from stretching across the others
   columns: number;
+  // Pre-orders: no stock badge and nothing greyed out, as any quantity can be ordered
+  preOrderMode?: boolean;
   onPress: (product: PosProduct) => void;
   onWholesalePress: (product: PosProduct) => void;
 }
 
-function ProductCard({ product, cartQty, originalQty = 0, columns, onPress, onWholesalePress }: Props) {
+function ProductCard({
+  product,
+  cartQty,
+  originalQty = 0,
+  columns,
+  preOrderMode = false,
+  onPress,
+  onWholesalePress,
+}: Props) {
   const stock = getAvailableStock(product, { [product._id]: originalQty });
   const outOfStock = stock <= 0;
+  const disabled = outOfStock && !preOrderMode;
   const inCart = cartQty > 0;
   const hasWholesale = (product.wholesalePrices?.length ?? 0) > 0;
 
@@ -35,10 +46,10 @@ function ProductCard({ product, cartQty, originalQty = 0, columns, onPress, onWh
         styles.card,
         { maxWidth: `${100 / columns}%` },
         inCart && styles.cardInCart,
-        outOfStock && styles.cardDisabled,
+        disabled && styles.cardDisabled,
       ]}
       onPress={() => onPress(product)}
-      disabled={outOfStock}
+      disabled={disabled}
       activeOpacity={0.75}
     >
       {inCart && (
@@ -56,9 +67,11 @@ function ProductCard({ product, cartQty, originalQty = 0, columns, onPress, onWh
           {product.category}
         </Text>
       )}
-      <View style={[styles.stockPill, stockStyle]}>
-        <Text style={[styles.stockText, stockTextStyle]}>{outOfStock ? 'Out of stock' : `Qty: ${stock}`}</Text>
-      </View>
+      {!preOrderMode && (
+        <View style={[styles.stockPill, stockStyle]}>
+          <Text style={[styles.stockText, stockTextStyle]}>{outOfStock ? 'Out of stock' : `Qty: ${stock}`}</Text>
+        </View>
+      )}
 
       <View style={styles.footer}>
         <Text style={styles.price}>{formatMMK(getUnitPrice(product))}</Text>
@@ -67,7 +80,7 @@ function ProductCard({ product, cartQty, originalQty = 0, columns, onPress, onWh
             onPress={() => onWholesalePress(product)}
             style={styles.wholesale}
             hitSlop={6}
-            disabled={outOfStock}
+            disabled={disabled}
           >
             <Text style={styles.wholesaleText}>Wholesale</Text>
           </TouchableOpacity>

@@ -22,8 +22,9 @@ interface Props {
   categories: string[];
   category: string;
   onCategoryChange: (category: string) => void;
-  stockFilter: StockFilter;
-  onStockFilterChange: (filter: StockFilter) => void;
+  // Left out (pre-orders): no stock filter, as every product can be picked
+  stockFilter?: StockFilter;
+  onStockFilterChange?: (filter: StockFilter) => void;
   onRefresh: () => void;
   isRefreshing: boolean;
 }
@@ -57,9 +58,11 @@ export default function PosFilters({
       <View style={styles.cell}>
         <Dropdown label={categoryLabel} active={category !== ALL_CATEGORIES} onPress={() => setPicker('category')} />
       </View>
-      <View style={styles.cell}>
-        <Dropdown label={stockLabel} active={stockFilter !== 'All'} onPress={() => setPicker('stock')} />
-      </View>
+      {stockFilter && onStockFilterChange && (
+        <View style={styles.cell}>
+          <Dropdown label={stockLabel} active={stockFilter !== 'All'} onPress={() => setPicker('stock')} />
+        </View>
+      )}
       <View style={styles.cell}>
         <TouchableOpacity
           style={[styles.refresh, isRefreshing && styles.refreshBusy]}
@@ -84,14 +87,16 @@ export default function PosFilters({
         onSelect={onCategoryChange}
         onClose={() => setPicker(null)}
       />
-      <OptionPickerSheet
-        visible={picker === 'stock'}
-        title="လက်ကျန် ရွေးချယ်ပါ"
-        options={STOCK_FILTERS}
-        selected={stockFilter}
-        onSelect={onStockFilterChange}
-        onClose={() => setPicker(null)}
-      />
+      {stockFilter && onStockFilterChange && (
+        <OptionPickerSheet
+          visible={picker === 'stock'}
+          title="လက်ကျန် ရွေးချယ်ပါ"
+          options={STOCK_FILTERS}
+          selected={stockFilter}
+          onSelect={onStockFilterChange}
+          onClose={() => setPicker(null)}
+        />
+      )}
     </View>
   );
 }

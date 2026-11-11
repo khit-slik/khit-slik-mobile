@@ -26,6 +26,37 @@ import { useSplashStore } from '../store/splashStore';
 import { printWebVoucher } from '../features/pos/printWebVoucher';
 import { NATIVE_POS_ENABLED, WEB_APP_URL } from '../config';
 
+// Dev builds only: forwards the web app's console.error (with any axios request details) to the
+// Metro terminal, so a failed API call inside the WebView shows its URL and status there.
+const DEV_LOG_JAVASCRIPT = `
+  (function() {
+    function describe(a) {
+      try {
+        if (a && a.isAxiosError) {
+          var c = a.config || {};
+          return 'AxiosError ' + (c.method || '').toUpperCase() + ' ' + (c.baseURL || '') + (c.url || '') +
+            ' -> ' + (a.response ? a.response.status + ' ' + JSON.stringify(a.response.data) : (a.code || '') + ' ' + a.message);
+        }
+        if (a instanceof Error) return a.name + ': ' + a.message;
+        return typeof a === 'string' ? a : JSON.stringify(a);
+      } catch (e) { return String(a); }
+    }
+    function post(level, args) {
+      try {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'DEV_LOG', level: level, href: location.href,
+          args: Array.prototype.map.call(args, describe),
+        }));
+      } catch (e) {}
+    }
+    var origError = console.error;
+    console.error = function() { post('error', arguments); return origError.apply(console, arguments); };
+    window.addEventListener('error', function(e) { post('error', ['Uncaught ' + e.message]); });
+    window.addEventListener('load', function() { post('info', ['page loaded']); });
+  })();
+  true;
+`;
+
 const INJECTED_JAVASCRIPT = `
   window.isCommercialMobileApp = true;
   (function() {
@@ -82,22 +113,34 @@ const INJECTED_JAVASCRIPT = `
       }
     };
 
-    // 4. Hand the new-sale route (/pos) and the order edit routes to the native POS screens
+    // 4. Hand the new-sale route (/pos), the order edit routes and the pre-order new/edit pages to the
+    // native screens
     if (${NATIVE_POS_ENABLED} && !window.__commercialPosHooked) {
       window.__commercialPosHooked = true;
       var lastPath = null;
       // /pos/edit/:id and /pos/credit-edit/:id (the order details' Edit button), and the older
       // /orders/edit/:id and /credit-orders/edit/:id
       var EDIT_ROUTE = /^\\/(?:pos\\/(?:credit-)?edit|orders\\/edit|credit-orders\\/edit)\\/([^\\/]+)$/;
+      // The pre-order list's new and edit pages go to the native pre-order screens
+      var PRE_ORDER_EDIT_ROUTE = /^\\/pre-orders\\/([^\\/]+)\\/edit$/;
+
+      function nativeScreenFor(path) {
+        var editMatch = path.match(EDIT_ROUTE);
+        if (editMatch) return { type: 'OPEN_NATIVE_ORDER_EDIT', orderId: decodeURIComponent(editMatch[1]) };
+        if (path === '/pos') return { type: 'OPEN_NATIVE_POS' };
+        var preOrderEditMatch = path.match(PRE_ORDER_EDIT_ROUTE);
+        if (preOrderEditMatch) {
+          return { type: 'OPEN_NATIVE_PRE_ORDER_EDIT', preOrderId: decodeURIComponent(preOrderEditMatch[1]) };
+        }
+        if (path === '/pre-orders/new') return { type: 'OPEN_NATIVE_PRE_ORDER' };
+        return null;
+      }
 
       function checkRoute(pushed) {
         var path = location.pathname.replace(/\\/+$/, '') || '/';
-        var editMatch = path.match(EDIT_ROUTE);
-        if ((path === '/pos' || editMatch) && window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify(editMatch
-            ? { type: 'OPEN_NATIVE_ORDER_EDIT', orderId: decodeURIComponent(editMatch[1]) }
-            : { type: 'OPEN_NATIVE_POS' }
-          ));
+        var nativeScreen = nativeScreenFor(path);
+        if (nativeScreen && window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify(nativeScreen));
           // Leave the web POS so it isn't sitting underneath when the native screen closes.
           // Only a pushed /pos entry can be undone with back(); otherwise overwrite it.
           if (pushed && lastPath) {
@@ -281,6 +324,18 @@ export default function WebShell() {
           break;
         }
 
+        case 'OPEN_NATIVE_PRE_ORDER': {
+          if (isFocusedRef.current) router.push('/pre-order');
+          break;
+        }
+
+        case 'OPEN_NATIVE_PRE_ORDER_EDIT': {
+          if (isFocusedRef.current && typeof message.preOrderId === 'string' && message.preOrderId) {
+            router.push({ pathname: '/pre-order-edit/[id]', params: { id: message.preOrderId } });
+          }
+          break;
+        }
+
         case 'OPEN_PRINTER_SETTINGS': {
           if (isFocusedRef.current) router.push('/printer');
           break;
@@ -322,6 +377,11 @@ export default function WebShell() {
           if (typeof message.receiptSlot === 'number') {
             useShopStore.getState().setReceiptSlot(message.receiptSlot);
           }
+          break;
+        }
+
+        case 'DEV_LOG': {
+          if (__DEV__) console.log(`[WebView ${message.level}] ${message.href}\n  ${(message.args || []).join(' ')}`);
           break;
         }
 
@@ -376,6 +436,7 @@ export default function WebShell() {
 
         // Injected client flag
         injectedJavaScript={INJECTED_JAVASCRIPT}
+        injectedJavaScriptBeforeContentLoaded={__DEV__ ? DEV_LOG_JAVASCRIPT : undefined}
 
         // Message bridge
         onMessage={handleWebViewMessage}
