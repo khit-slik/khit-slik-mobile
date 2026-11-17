@@ -76,6 +76,9 @@ export interface CreateOrderRequest {
   note?: string;
   orderDate?: string;
   creditPersonId?: string;
+  deliveryRegion?: string | null;
+  deliveryTownship?: string | null;
+  deliveryFee?: number;
 }
 
 export interface PosOrder {
@@ -118,6 +121,9 @@ export interface PosOrderDetail extends PosOrder {
   createdAt?: string;
   creditPersonId?: PersonRef | string | null;
   customerId?: PersonRef | string | null;
+  deliveryRegion?: string | null;
+  deliveryTownship?: string | null;
+  deliveryFee?: number;
   isDeleted?: boolean;
 }
 
@@ -133,7 +139,7 @@ export interface CreditPersona {
   name: string;
   phone: string;
   address?: string;
-  // The customer's delivery region / Yangon township codes (a pre-order's delivery starts from them)
+  // The customer's saved region and Yangon township codes
   region?: string | null;
   township?: string | null;
   blacklist: boolean;
@@ -155,6 +161,8 @@ export interface CreateCreditPersonaPayload {
   name: string;
   phone: string;
   address?: string;
+  region?: string;
+  township?: string;
 }
 
 export interface BrandingProfile {

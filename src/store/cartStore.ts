@@ -53,6 +53,9 @@ export interface CartState {
   paymentMethod: PaymentMethod;
   paidAmount: number;
   creditPersonId: string;
+  deliveryRegion: string;
+  deliveryTownship: string;
+  deliveryFee: number;
   note: string;
   orderDate: string;
   isCheckoutOpen: boolean;
@@ -81,7 +84,9 @@ export interface CartState {
   selectPaymentOption: (option: PaymentOption) => void;
   setPaymentMethod: (method: PaymentMethod) => void;
   setPaidAmount: (amount: number) => void;
-  setCreditPersonId: (id: string) => void;
+  setCustomer: (customer: Pick<CreditPersona, '_id' | 'region' | 'township'> | null) => void;
+  setDeliveryRegion: (region: string) => void;
+  setDeliveryFee: (fee: number) => void;
   setNote: (note: string) => void;
   setOrderDate: (date: string) => void;
 
@@ -102,6 +107,9 @@ type CartData = Pick<
   | 'paymentMethod'
   | 'paidAmount'
   | 'creditPersonId'
+  | 'deliveryRegion'
+  | 'deliveryTownship'
+  | 'deliveryFee'
   | 'note'
   | 'orderDate'
   | 'isCheckoutOpen'
@@ -118,13 +126,16 @@ const initialData = (): CartData => ({
   paymentMethod: PAYMENT_METHODS.CASH,
   paidAmount: 0,
   creditPersonId: '',
+  deliveryRegion: '',
+  deliveryTownship: '',
+  deliveryFee: 0,
   note: '',
   orderDate: getTodayDateString(),
   isCheckoutOpen: false,
   editingOrder: null,
 });
 
-const totalOf = (state: Pick<CartData, 'items' | 'priceMode' | 'discountPercent' | 'markupAmount'>) =>
+const totalOf = (state: Pick<CartData, 'items' | 'priceMode' | 'discountPercent' | 'markupAmount' | 'deliveryFee'>) =>
   computeTotals(state).total;
 
 // While the checkout screen is open, a paid (non-FOC) order's paid amount follows the total,
@@ -218,7 +229,22 @@ export const createCartStore = () => create<CartState>((set, get) => {
       const value = Number(amount);
       set({ paidAmount: Number.isFinite(value) && value > 0 ? Math.ceil(value) : 0 });
     },
-    setCreditPersonId: (creditPersonId) => set({ creditPersonId }),
+    setCustomer: (customer) => {
+      const creditPersonId = customer?._id ?? '';
+      // Keep a manual override or the saved order's destination when the same customer is reselected.
+      if (creditPersonId === get().creditPersonId) return;
+      set({
+        creditPersonId,
+        deliveryRegion: customer?.region || '',
+        deliveryTownship: customer?.region ? customer.township || '' : '',
+      });
+    },
+    setDeliveryRegion: (deliveryRegion) => {
+      if (deliveryRegion !== get().deliveryRegion) set({ deliveryRegion, deliveryTownship: '' });
+    },
+    setDeliveryFee: (deliveryFee) => {
+      if (Number.isFinite(deliveryFee) && deliveryFee >= 0) update({ deliveryFee });
+    },
     setNote: (note) => set({ note }),
     setOrderDate: (orderDate) => set({ orderDate }),
 
@@ -280,8 +306,9 @@ export const useCartTotals = () => {
   const priceMode = useCart((state) => state.priceMode);
   const discountPercent = useCart((state) => state.discountPercent);
   const markupAmount = useCart((state) => state.markupAmount);
+  const deliveryFee = useCart((state) => state.deliveryFee);
   return useMemo(
-    () => computeTotals({ items, priceMode, discountPercent, markupAmount }),
-    [items, priceMode, discountPercent, markupAmount],
+    () => computeTotals({ items, priceMode, discountPercent, markupAmount, deliveryFee }),
+    [items, priceMode, discountPercent, markupAmount, deliveryFee],
   );
 };

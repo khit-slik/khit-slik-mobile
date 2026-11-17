@@ -19,6 +19,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { CreditPersona } from '../../../../services/pos/types';
 import { PaymentOption, useCart, useCartTotals } from '../../../../store/cartStore';
 import { toast } from '../../../../store/toastStore';
+import { useMyanmarLocations } from '../../../preOrder/hooks/useMyanmarLocations';
 import { useCreditPersonas } from '../../hooks/usePosData';
 import {
   CHECKOUT_ERROR_MESSAGES,
@@ -31,6 +32,7 @@ import {
   validateCheckout,
 } from '../../lib';
 import { colors, formatMMK, TABLET_MIN_WIDTH } from '../../theme';
+import OptionPickerSheet from '../OptionPickerSheet';
 import OrderDateField from '../OrderDateField';
 import AddCustomerSheet from './AddCustomerSheet';
 import CustomerPicker, { customerLabel } from './CustomerPicker';
@@ -72,6 +74,8 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
     [listed, extraCustomer],
   );
 
+  const { regions, regionLabel } = useMyanmarLocations();
+  const [isRegionPickerOpen, setIsRegionPickerOpen] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
@@ -104,6 +108,8 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
     paymentMethod: cart.paymentMethod,
     paidAmount: cart.paidAmount,
     creditPersonId: cart.creditPersonId,
+    deliveryRegion: cart.deliveryRegion,
+    deliveryTownship: cart.deliveryTownship,
     note: cart.note,
     orderDate: cart.orderDate,
   };
@@ -134,7 +140,7 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
 
   const handleCustomerCreated = (persona: CreditPersona) => {
     addPersona(persona);
-    cart.setCreditPersonId(persona._id);
+    cart.setCustomer(persona);
     setIsAddCustomerOpen(false);
   };
 
@@ -152,7 +158,7 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
             <View style={styles.headerText}>
               <Text style={styles.title}>{title}</Text>
               <Text style={styles.summaryPill}>
-                ပစ္စည်းများ: {totals.itemCount} ခု | စုစုပေါင်း: {formatMMK(totals.subtotal)}
+                ပစ္စည်းများ: {totals.itemCount} ခု | စုစုပေါင်း: {formatMMK(totals.total)}
               </Text>
             </View>
             <TouchableOpacity onPress={close} style={styles.closeButton} hitSlop={8}>
@@ -195,7 +201,7 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
                   <Ionicons name="chevron-down" size={18} color={colors.textMuted} />
                 </TouchableOpacity>
                 {!!cart.creditPersonId && (
-                  <TouchableOpacity style={styles.clearCustomer} onPress={() => cart.setCreditPersonId('')}>
+                  <TouchableOpacity style={styles.clearCustomer} onPress={() => cart.setCustomer(null)}>
                     <Ionicons name="close" size={18} color={colors.textMuted} />
                   </TouchableOpacity>
                 )}
@@ -210,6 +216,38 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
                   {/* Phones keep the short label so the customer name still fits */}
                   <Text style={styles.addCustomerText}>{isTablet ? 'အသစ်ထည့်မယ်' : 'အသစ်'}</Text>
                 </TouchableOpacity>
+              </View>
+            </Section>
+
+            <Section label="ပို့ဆောင်ရန်" hint="(မထည့်လည်းရ)">
+              <View style={isTablet ? styles.inputRow : styles.deliveryFields}>
+                <TouchableOpacity
+                  style={[styles.customerField, !isTablet && styles.deliveryRegionField]}
+                  onPress={() => setIsRegionPickerOpen(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="တိုင်း/ပြည်နယ် ရွေးပါ"
+                  accessibilityValue={{ text: cart.deliveryRegion ? regionLabel(cart.deliveryRegion) : 'မရွေးပါ' }}
+                >
+                  <Ionicons name="location-outline" size={18} color={colors.textMuted} />
+                  <Text style={[styles.customerText, !cart.deliveryRegion && styles.placeholder]} numberOfLines={1}>
+                    {cart.deliveryRegion ? regionLabel(cart.deliveryRegion) : 'တိုင်း/ပြည်နယ် ရွေးပါ'}
+                  </Text>
+                  <Ionicons name="chevron-down" size={18} color={colors.textMuted} />
+                </TouchableOpacity>
+                <View style={[styles.deliveryFeeField, isTablet && styles.flex]}>
+                  <TextInput
+                    style={[styles.input, styles.deliveryFeeInput]}
+                    value={cart.deliveryFee ? String(cart.deliveryFee) : ''}
+                    onChangeText={(text) => {
+                      if (/^\d*$/.test(text) && Number.isSafeInteger(Number(text))) cart.setDeliveryFee(Number(text));
+                    }}
+                    placeholder="ပို့ခ"
+                    placeholderTextColor={colors.textFaint}
+                    keyboardType="number-pad"
+                    accessibilityLabel="ပို့ခ (ကျပ်)"
+                  />
+                  <Text style={styles.deliveryFeeUnit}>ကျပ်</Text>
+                </View>
               </View>
             </Section>
 
@@ -294,6 +332,18 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
               />
             </Section>
 
+            <Section label="မှတ်ချက်" hint="(မထည့်လည်းရ)">
+              <TextInput
+                style={[styles.input, styles.noteInput]}
+                accessibilityLabel="မှတ်ချက် (မထည့်လည်းရ)"
+                value={cart.note}
+                onChangeText={cart.setNote}
+                multiline
+                textAlignVertical="top"
+                maxLength={500}
+              />
+            </Section>
+
             <View style={styles.summary}>
               <SummaryRow label="စုစုပေါင်း (Subtotal)" value={formatMMK(totals.subtotal)} />
               {totals.discountAmount > 0 && (
@@ -301,6 +351,9 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
               )}
               {totals.markupAmount > 0 && (
                 <SummaryRow label="Mark Up" value={`+ ${formatMMK(totals.markupAmount)}`} />
+              )}
+              {totals.deliveryFee > 0 && (
+                <SummaryRow label="ပို့ခ" value={`+ ${formatMMK(totals.deliveryFee)}`} />
               )}
               <SummaryRow label="ကျသင့်ငွေ" value={formatMMK(totals.total)} strong />
               {cart.paymentType === 'paid' && !foc && (
@@ -340,7 +393,7 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
         personas={personas}
         isLoading={personasLoading}
         selectedId={cart.creditPersonId}
-        onSelect={cart.setCreditPersonId}
+        onSelect={(id) => cart.setCustomer(personas.find((persona) => persona._id === id) ?? null)}
         onAddNew={handleAddNewCustomer}
         onClose={() => setIsPickerOpen(false)}
       />
@@ -348,6 +401,15 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
         visible={isAddCustomerOpen}
         onClose={() => setIsAddCustomerOpen(false)}
         onCreated={handleCustomerCreated}
+        allowLocation
+      />
+      <OptionPickerSheet
+        visible={isRegionPickerOpen}
+        title="တိုင်း/ပြည်နယ်"
+        options={[{ value: '', label: 'မရွေးပါ' }, ...regions.map((region) => ({ value: region.code, label: region.my }))]}
+        selected={cart.deliveryRegion}
+        onSelect={cart.setDeliveryRegion}
+        onClose={() => setIsRegionPickerOpen(false)}
       />
       <DiscountCalculatorSheet
         visible={isCalculatorOpen}
@@ -599,6 +661,24 @@ const styles = StyleSheet.create({
     color: colors.text,
     backgroundColor: colors.surface,
   },
+  deliveryFields: {
+    gap: 8,
+  },
+  deliveryRegionField: {
+    flex: 0,
+  },
+  deliveryFeeField: {
+    justifyContent: 'center',
+  },
+  deliveryFeeInput: {
+    paddingRight: 60,
+  },
+  deliveryFeeUnit: {
+    position: 'absolute',
+    right: 14,
+    fontSize: 13,
+    color: colors.textMuted,
+  },
   inputDisabled: {
     backgroundColor: colors.borderSoft,
     color: colors.textFaint,
@@ -621,6 +701,10 @@ const styles = StyleSheet.create({
   calculatorText: {
     color: colors.primary,
     fontWeight: '700',
+  },
+  noteInput: {
+    minHeight: 72,
+    fontWeight: '400',
   },
   summary: {
     padding: 16,

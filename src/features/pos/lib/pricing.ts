@@ -12,6 +12,7 @@ export interface Totals {
   subtotal: number;
   discountAmount: number;
   markupAmount: number;
+  deliveryFee: number;
   total: number;
 }
 
@@ -40,28 +41,38 @@ export const computeTotals = ({
   priceMode,
   discountPercent,
   markupAmount,
+  deliveryFee = 0,
 }: {
   items: CartItem[];
   priceMode: PriceMode;
   discountPercent: number;
   markupAmount: number;
+  deliveryFee?: number;
 }): Totals => {
   const itemCount = items.reduce((sum, item) => sum + getSafeQty(item.qty), 0);
   const subtotal = items.reduce((sum, item) => sum + getLineTotal(item), 0);
 
   if (priceMode === 'markup') {
     const markup = Number(markupAmount) || 0;
-    return { itemCount, subtotal, discountAmount: 0, markupAmount: markup, total: subtotal + markup };
+    return {
+      itemCount,
+      subtotal,
+      discountAmount: 0,
+      markupAmount: markup,
+      deliveryFee,
+      total: subtotal + markup + deliveryFee,
+    };
   }
 
   const percent = priceMode === 'discount' ? Number(discountPercent) || 0 : 0;
-  const total = Math.round(subtotal * (1 - percent / 100));
+  const goodsTotal = Math.round(subtotal * (1 - percent / 100));
   return {
     itemCount,
     subtotal,
-    discountAmount: Math.round(subtotal - total),
+    discountAmount: Math.round(subtotal - goodsTotal),
     markupAmount: 0,
-    total,
+    deliveryFee,
+    total: goodsTotal + deliveryFee,
   };
 };
 

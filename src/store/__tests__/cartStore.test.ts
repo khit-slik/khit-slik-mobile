@@ -38,7 +38,7 @@ describe('cart actions', () => {
   it('clearing the cart keeps the payment options', () => {
     fillCart();
     store().selectPaymentOption('credit');
-    store().setCreditPersonId('cp1');
+    store().setCustomer({ _id: 'cp1' });
     store().clearItems();
     expect(store().items).toEqual([]);
     expect(store()).toMatchObject({ paymentType: 'credit', creditPersonId: 'cp1', isCheckoutOpen: false });
@@ -47,6 +47,42 @@ describe('cart actions', () => {
   it('cannot open checkout with an empty cart', () => {
     store().openCheckout();
     expect(store().isCheckoutOpen).toBe(false);
+  });
+});
+
+describe('checkout delivery', () => {
+  it('fills the saved location for the selected customer without changing the fee', () => {
+    store().setDeliveryFee(500);
+    store().setCustomer({ _id: 'cp1', region: 'yangon', township: 'hlaing' });
+    expect(store()).toMatchObject({
+      creditPersonId: 'cp1',
+      deliveryRegion: 'yangon',
+      deliveryTownship: 'hlaing',
+      deliveryFee: 500,
+    });
+
+    store().setCustomer({ _id: 'cp2' });
+    expect(store()).toMatchObject({ deliveryRegion: '', deliveryTownship: '', deliveryFee: 500 });
+  });
+
+  it('keeps a manual region when the same customer is reselected', () => {
+    const customer = { _id: 'cp1', region: 'yangon', township: 'hlaing' };
+    store().setCustomer(customer);
+    store().setDeliveryRegion('mandalay');
+    store().setCustomer(customer);
+    expect(store()).toMatchObject({ deliveryRegion: 'mandalay', deliveryTownship: '' });
+  });
+
+  it('updates the paid total and resets delivery after a new sale', () => {
+    fillCart();
+    store().openCheckout();
+    store().setDeliveryRegion('mandalay');
+    store().setDeliveryFee(500);
+    expect(store().paidAmount).toBe(3500);
+
+    const sale = store().completeSale({ _id: 'o1', orderNumber: 'INV/0001' }, null);
+    expect(sale.totals).toMatchObject({ subtotal: 3000, deliveryFee: 500, total: 3500 });
+    expect(store()).toMatchObject({ deliveryRegion: '', deliveryTownship: '', deliveryFee: 0 });
   });
 });
 
@@ -188,7 +224,7 @@ describe('reset', () => {
   it('clears everything', () => {
     fillCart();
     store().setNote('note');
-    store().setCreditPersonId('cp1');
+    store().setCustomer({ _id: 'cp1' });
     store().selectPaymentOption('credit');
     store().reset();
     expect(store()).toMatchObject({

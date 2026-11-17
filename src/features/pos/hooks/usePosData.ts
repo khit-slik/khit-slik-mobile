@@ -118,7 +118,12 @@ export const useCreditPersonas = () => {
     let cancelled = false;
     fetchCreditPersonas({ all: true }).then((res) => {
       if (cancelled) return;
-      if (res.success) setPersonas(res.data.filter((p) => !p.blacklist));
+      if (res.success) {
+        setPersonas((current) => {
+          const existingIds = new Set(current.map((persona) => persona._id));
+          return [...current, ...res.data.filter((persona) => !persona.blacklist && !existingIds.has(persona._id))];
+        });
+      }
       setIsLoading(false);
     });
     return () => {

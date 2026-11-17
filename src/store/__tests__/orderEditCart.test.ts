@@ -1,5 +1,5 @@
 import type { PosOrderDetail, PosProduct } from '../../services/pos/types';
-import { orderToDraft } from '../../features/pos/lib';
+import { buildUpdateOrderPayload, computeTotals, orderToDraft } from '../../features/pos/lib';
 import { useCartStore, useOrderEditCartStore } from '../cartStore';
 
 // No shelf stock left, but the order holds 2
@@ -42,6 +42,33 @@ describe('order edit cart', () => {
     expect(store().items[0].product.availableQuantity).toBe(5);
     expect(store().items[0].product.sellingPrice).toBe(950);
     expect(store().setQty('oil', 7)).toBeUndefined();
+  });
+
+  it('keeps the saved destination and counts the fee once when editing an order', () => {
+    const savedOrder: PosOrderDetail = {
+      ...order,
+      creditPersonId: 'cp1',
+      deliveryRegion: 'yangon',
+      deliveryTownship: 'hlaing',
+      deliveryFee: 500,
+      finalAmount: 2500,
+      paidAmount: 2500,
+    };
+    store().startEdit(orderToDraft(savedOrder, new Map([['oil', oil]])).draft);
+    store().openCheckout();
+    store().setCustomer({ _id: 'cp1', region: 'mandalay' });
+
+    const state = store();
+    const totals = computeTotals(state);
+    expect(totals).toMatchObject({ markupAmount: 100, deliveryFee: 500, total: 2500 });
+    expect(buildUpdateOrderPayload({ ...state, totals })).toMatchObject({
+      creditPersonId: 'cp1',
+      deliveryRegion: 'yangon',
+      deliveryTownship: 'hlaing',
+      deliveryFee: 500,
+      finalAmount: 2500,
+      paidAmount: 2500,
+    });
   });
 
   it('saving clears the order being edited', () => {

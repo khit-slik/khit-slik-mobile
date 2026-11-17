@@ -160,6 +160,8 @@ describe('buildUpdateOrderPayload', () => {
     paymentMethod: PAYMENT_METHODS.CASH,
     paidAmount: 9000,
     creditPersonId: '',
+    deliveryRegion: '',
+    deliveryTownship: '',
     note: '',
     orderDate: '2026-10-23',
     ...overrides,

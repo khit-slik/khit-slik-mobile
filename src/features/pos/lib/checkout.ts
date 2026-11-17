@@ -17,6 +17,8 @@ export interface CheckoutInput {
   paymentMethod: PaymentMethod;
   paidAmount: number;
   creditPersonId: string;
+  deliveryRegion: string;
+  deliveryTownship: string;
   note: string;
   // YYYY-MM-DD, as picked on the checkout screen
   orderDate: string;
@@ -78,6 +80,9 @@ export const buildCreateOrderPayload = (input: CheckoutInput): CreateOrderReques
     subTotal: totals.subtotal,
     discount: totals.discountAmount,
     finalAmount: totals.total,
+    deliveryRegion: input.deliveryRegion || null,
+    deliveryTownship: input.deliveryTownship || null,
+    deliveryFee: totals.deliveryFee,
     paidAmount: getFinalPaidAmount(paymentMethod, paidAmount),
     paymentType,
     note,

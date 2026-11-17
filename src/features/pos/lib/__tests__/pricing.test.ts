@@ -90,6 +90,7 @@ describe('computeTotals', () => {
       subtotal: 2999,
       discountAmount: 0,
       markupAmount: 0,
+      deliveryFee: 0,
       total: 2999,
     });
   });
@@ -113,6 +114,20 @@ describe('computeTotals', () => {
     expect(totals.markupAmount).toBe(500);
   });
 
+  it('adds delivery after the goods discount or markup', () => {
+    const pricing = { items, discountPercent: 10, markupAmount: 500, deliveryFee: 400 };
+    expect(computeTotals({ ...pricing, priceMode: 'discount' })).toMatchObject({
+      discountAmount: 300,
+      deliveryFee: 400,
+      total: 3099,
+    });
+    expect(computeTotals({ ...pricing, priceMode: 'markup' })).toMatchObject({
+      markupAmount: 500,
+      deliveryFee: 400,
+      total: 3899,
+    });
+  });
+
   it('ignores values that belong to another price mode', () => {
     expect(computeTotals({ items, priceMode: 'normal', discountPercent: 10, markupAmount: 500 }).total).toBe(2999);
     expect(computeTotals({ items, priceMode: 'discount', discountPercent: 0, markupAmount: 500 }).total).toBe(2999);
@@ -124,6 +139,7 @@ describe('computeTotals', () => {
       subtotal: 0,
       discountAmount: 0,
       markupAmount: 0,
+      deliveryFee: 0,
       total: 0,
     });
   });

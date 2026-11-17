@@ -5,46 +5,48 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors } from '../theme';
 import BottomSheet from './BottomSheet';
 
-interface Props<T extends string> {
-  visible: boolean;
-  title: string;
+interface OptionPickerListProps<T extends string> {
   options: { value: T; label: string }[];
   selected: T;
   onSelect: (value: T) => void;
   onClose: () => void;
 }
 
+interface Props<T extends string> extends OptionPickerListProps<T> {
+  visible: boolean;
+  title: string;
+}
+
 // List picker behind the filter dropdowns (the native stand-in for the web's <select>)
-export default function OptionPickerSheet<T extends string>({
-  visible,
-  title,
-  options,
-  selected,
-  onSelect,
-  onClose,
-}: Props<T>) {
+export default function OptionPickerSheet<T extends string>({ visible, title, ...listProps }: Props<T>) {
   return (
-    <BottomSheet visible={visible} title={title} onClose={onClose} maxHeight="75%">
-      <ScrollView contentContainerStyle={styles.list}>
-        {options.map((option) => {
-          const active = option.value === selected;
-          return (
-            <TouchableOpacity
-              key={option.value}
-              style={[styles.option, active && styles.optionActive]}
-              onPress={() => {
-                onSelect(option.value);
-                onClose();
-              }}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.optionText, active && styles.optionTextActive]}>{option.label}</Text>
-              {active && <Ionicons name="checkmark" size={20} color={colors.primary} />}
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+    <BottomSheet visible={visible} title={title} onClose={listProps.onClose} maxHeight="75%">
+      <OptionPickerList {...listProps} />
     </BottomSheet>
+  );
+}
+
+export function OptionPickerList<T extends string>({ options, selected, onSelect, onClose }: OptionPickerListProps<T>) {
+  return (
+    <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
+      {options.map((option) => {
+        const active = option.value === selected;
+        return (
+          <TouchableOpacity
+            key={option.value}
+            style={[styles.option, active && styles.optionActive]}
+            onPress={() => {
+              onSelect(option.value);
+              onClose();
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.optionText, active && styles.optionTextActive]}>{option.label}</Text>
+            {active && <Ionicons name="checkmark" size={20} color={colors.primary} />}
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
   );
 }
 

@@ -21,6 +21,8 @@ const input = (overrides: Partial<CheckoutInput> = {}): CheckoutInput => ({
   paymentMethod: PAYMENT_METHODS.CASH,
   paidAmount: 3000,
   creditPersonId: '',
+  deliveryRegion: '',
+  deliveryTownship: '',
   note: '',
   orderDate: '2026-10-23',
   ...overrides,
@@ -83,6 +85,9 @@ describe('buildCreateOrderPayload', () => {
       subTotal: 3000,
       discount: 0,
       finalAmount: 3000,
+      deliveryRegion: null,
+      deliveryTownship: null,
+      deliveryFee: 0,
       paidAmount: 3000,
       paymentType: 'paid',
       note: 'urgent',
@@ -104,6 +109,28 @@ describe('buildCreateOrderPayload', () => {
       subTotal: 3000,
       discount: 300,
       finalAmount: 2700,
+    });
+  });
+
+  it('sends the region and delivery fee independently of the merchandise price', () => {
+    const totalsWithDelivery = computeTotals({
+      items,
+      priceMode: 'discount',
+      discountPercent: 10,
+      markupAmount: 0,
+      deliveryFee: 500,
+    });
+    const checkout = input({ totals: totalsWithDelivery, paidAmount: 3200, deliveryRegion: 'mandalay' });
+
+    expect(validateCheckout(checkout)).toBeNull();
+    expect(validateCheckout({ ...checkout, paidAmount: 2700 })).toBe('PAID_LESS_THAN_TOTAL');
+    expect(buildCreateOrderPayload(checkout)).toMatchObject({
+      subTotal: 3000,
+      discount: 300,
+      deliveryRegion: 'mandalay',
+      deliveryTownship: null,
+      deliveryFee: 500,
+      finalAmount: 3200,
     });
   });
 

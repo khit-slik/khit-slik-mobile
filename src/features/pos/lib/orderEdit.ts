@@ -16,6 +16,9 @@ export interface OrderEditDraft {
   paymentMethod: PaymentMethod;
   paidAmount: number;
   creditPersonId: string;
+  deliveryRegion: string;
+  deliveryTownship: string;
+  deliveryFee: number;
   note: string;
   orderDate: string;
 }
@@ -77,13 +80,14 @@ const toCartProduct = (line: OrderLine, qty: number, fresh: PosProduct | undefin
 const toPricing = (order: PosOrderDetail, foc: boolean) => {
   const subtotal = order.subTotal || 0;
   const discount = order.discount || 0;
-  const finalAmount = order.finalAmount ?? subtotal - discount;
+  const deliveryFee = order.deliveryFee ?? 0;
+  const goodsTotal = order.finalAmount == null ? subtotal - discount : order.finalAmount - deliveryFee;
   if (foc) return { priceMode: 'normal' as const, discountPercent: 0, markupAmount: 0 };
   if (subtotal > 0 && discount > 0) {
     return { priceMode: 'discount' as const, discountPercent: (discount / subtotal) * 100, markupAmount: 0 };
   }
-  if (finalAmount > subtotal) {
-    return { priceMode: 'markup' as const, discountPercent: 0, markupAmount: finalAmount - subtotal };
+  if (goodsTotal > subtotal) {
+    return { priceMode: 'markup' as const, discountPercent: 0, markupAmount: goodsTotal - subtotal };
   }
   return { priceMode: 'normal' as const, discountPercent: 0, markupAmount: 0 };
 };
@@ -119,6 +123,9 @@ export const orderToDraft = (
       paymentMethod,
       paidAmount: foc ? 0 : order.paidAmount || 0,
       creditPersonId: getOrderCustomerId(order),
+      deliveryRegion: order.deliveryRegion ?? '',
+      deliveryTownship: order.deliveryTownship ?? '',
+      deliveryFee: order.deliveryFee ?? 0,
       note: order.note || '',
       orderDate: order.createdAt ? getTodayDateString(new Date(order.createdAt)) : getTodayDateString(),
     },
