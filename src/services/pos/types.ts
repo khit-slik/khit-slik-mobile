@@ -48,6 +48,7 @@ export interface FetchProductsResponse extends ApiResponse<PosProduct[]> {
 // Values the backend accepts for paymentMethod
 export type ApiPaymentMethod =
   | 'cash'
+  | 'cod'
   | 'kpay'
   | 'wavepay'
   | 'ayapay'

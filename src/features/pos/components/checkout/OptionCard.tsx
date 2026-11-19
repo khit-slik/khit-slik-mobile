@@ -7,11 +7,18 @@ interface Props {
   label: string;
   active: boolean;
   disabled?: boolean;
+  accessibilityRole?: 'radio' | 'checkbox';
   onPress: () => void;
 }
 
 // Radio-style choice, as on the web checkout
-export default function OptionCard({ label, active, disabled = false, onPress }: Props) {
+export default function OptionCard({
+  label,
+  active,
+  disabled = false,
+  accessibilityRole = 'radio',
+  onPress,
+}: Props) {
   const isActive = active && !disabled;
   return (
     <TouchableOpacity
@@ -19,6 +26,8 @@ export default function OptionCard({ label, active, disabled = false, onPress }:
       onPress={onPress}
       disabled={disabled}
       activeOpacity={0.8}
+      accessibilityRole={accessibilityRole}
+      accessibilityState={{ checked: isActive, disabled }}
     >
       <View style={[styles.radio, isActive && styles.radioActive]}>
         {isActive && <View style={styles.radioDot} />}

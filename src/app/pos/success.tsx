@@ -28,6 +28,7 @@ export default function SuccessScreen() {
     <SaleDoneCard
       key={sale.order._id}
       sale={sale}
+      receiptAction="download"
       title="ရောင်းချမှု အောင်မြင်ပါတယ်"
       subtitle="အရောင်း ဘောင်ချာ အောင်မြင်စွာ သိမ်းထားပြီးပါပြီ"
       onExit={startNewSale}

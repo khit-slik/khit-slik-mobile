@@ -168,3 +168,15 @@ describe('payment methods', () => {
     expect(fromApiPaymentMethod(undefined)).toBe(PAYMENT_METHODS.CASH);
   });
 });
+
+it('saves COD with zero paid and keeps the checkout total', () => {
+  const cod = input({ paymentMethod: PAYMENT_METHODS.COD, paidAmount: 0 });
+  expect(validateCheckout(cod)).toBeNull();
+  expect(buildCreateOrderPayload({ ...cod, paidAmount: cod.totals.total })).toMatchObject({
+    paymentMethod: 'cod',
+    paymentType: 'paid',
+    paidAmount: 0,
+    finalAmount: cod.totals.total,
+  });
+  expect(fromApiPaymentMethod('cod')).toBe(PAYMENT_METHODS.COD);
+});

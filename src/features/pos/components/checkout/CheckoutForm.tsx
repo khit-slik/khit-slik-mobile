@@ -25,9 +25,12 @@ import {
   CHECKOUT_ERROR_MESSAGES,
   CheckoutInput,
   getChangeAmount,
+  hasNoUpfrontPayment,
+  isCod,
   isFoc,
   markupPercentOf,
   PriceMode,
+  PAYMENT_METHODS,
   SELECTABLE_PAYMENT_METHODS,
   validateCheckout,
 } from '../../lib';
@@ -98,6 +101,8 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
   if (isEmpty) return null;
 
   const foc = isFoc(cart.paymentMethod);
+  const cod = isCod(cart.paymentMethod);
+  const noUpfrontPayment = hasNoUpfrontPayment(cart.paymentMethod);
   const selectedCustomer = personas.find((p) => p._id === cart.creditPersonId) ?? null;
   const activeOption: PaymentOption = foc ? 'foc' : cart.paymentType;
 
@@ -172,7 +177,7 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
                 {PAYMENT_OPTIONS.map((option) => (
                   <OptionCard
                     key={option.id}
-                    label={option.label}
+                    label={cod && option.id === 'paid' ? 'ပို့ချိန် ငွေချေမယ်' : option.label}
                     active={activeOption === option.id}
                     onPress={() => cart.selectPaymentOption(option.id)}
                   />
@@ -262,6 +267,15 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
                     onPress={() => cart.setPaymentMethod(method.id)}
                   />
                 ))}
+                {!cart.editingOrder && cart.paymentType === 'paid' && (
+                  <OptionCard
+                    label="COD"
+                    accessibilityRole="checkbox"
+                    active={cod}
+                    disabled={foc}
+                    onPress={() => cart.setPaymentMethod(cod ? PAYMENT_METHODS.CASH : PAYMENT_METHODS.COD)}
+                  />
+                )}
               </View>
             </Section>
 
@@ -320,12 +334,12 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
               </Section>
             )}
 
-            <Section label="ပေးချေမှု ပမာဏ">
+            <Section label={cod ? "ပို့ချိန် ကောက်ခံရန်" : "ပေးချေမှု ပမာဏ"}>
               <TextInput
-                style={[styles.input, styles.paidInput, foc && styles.inputDisabled]}
-                value={foc ? '0' : cart.paidAmount ? String(cart.paidAmount) : ''}
+                style={[styles.input, styles.paidInput, noUpfrontPayment && styles.inputDisabled]}
+                value={cod ? String(totals.total) : foc ? '0' : cart.paidAmount ? String(cart.paidAmount) : ''}
                 onChangeText={(text) => cart.setPaidAmount(digitsOnly(text))}
-                editable={!foc}
+                editable={!noUpfrontPayment}
                 placeholder={`ပမာဏ ရိုက်ထည့်ပါ (${formatMMK(totals.total)})`}
                 placeholderTextColor={colors.textFaint}
                 keyboardType="number-pad"
@@ -355,8 +369,8 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
               {totals.deliveryFee > 0 && (
                 <SummaryRow label="ပို့ခ" value={`+ ${formatMMK(totals.deliveryFee)}`} />
               )}
-              <SummaryRow label="ကျသင့်ငွေ" value={formatMMK(totals.total)} strong />
-              {cart.paymentType === 'paid' && !foc && (
+              <SummaryRow label={cod ? "COD ကောက်ခံရန်" : "ကျသင့်ငွေ"} value={formatMMK(totals.total)} strong />
+              {cart.paymentType === 'paid' && !noUpfrontPayment && (
                 <SummaryRow label="ပြန်အမ်းငွေ" value={formatMMK(getChangeAmount(cart.paidAmount, totals.total))} />
               )}
               {cart.paymentType === 'credit' && (

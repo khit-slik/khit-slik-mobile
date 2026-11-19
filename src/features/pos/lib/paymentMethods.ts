@@ -3,6 +3,7 @@ import type { ApiPaymentMethod } from '../../../services/pos/types';
 // Display values, same as the web POS's PaymentMethod enum
 export const PAYMENT_METHODS = {
   CASH: 'Cash',
+  COD: 'COD',
   KBZ_PAY: 'KBZPay',
   WAVE_PAY: 'WavePay',
   AYA_PAY: 'AYA Pay',
@@ -18,6 +19,7 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[keyof typeof PAYMENT_METHOD
 
 const TO_API: Record<PaymentMethod, ApiPaymentMethod> = {
   [PAYMENT_METHODS.CASH]: 'cash',
+  [PAYMENT_METHODS.COD]: 'cod',
   [PAYMENT_METHODS.KBZ_PAY]: 'kpay',
   [PAYMENT_METHODS.WAVE_PAY]: 'wavepay',
   [PAYMENT_METHODS.AYA_PAY]: 'ayapay',
@@ -28,6 +30,8 @@ const TO_API: Record<PaymentMethod, ApiPaymentMethod> = {
   [PAYMENT_METHODS.HOT]: 'hot',
   [PAYMENT_METHODS.FOC]: 'foc',
 };
+
+export const isCod = (method: PaymentMethod) => method === PAYMENT_METHODS.COD;
 
 export const toApiPaymentMethod = (method: PaymentMethod): ApiPaymentMethod => TO_API[method];
 

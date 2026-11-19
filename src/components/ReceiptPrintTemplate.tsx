@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Image, StyleSheet, Text, TextProps, View } from 'react-native';
 
+import { PAYMENT_METHODS } from '../features/pos/lib/paymentMethods';
 import { RECEIPT_FONT } from '../fonts';
 import { ReceiptData } from '../services/receiptCaptureService';
 import { useShopStore } from '../store/shopStore';
@@ -173,7 +174,11 @@ export default function ReceiptPrintTemplate({ receipt, paperWidth, onLogoSettle
           summaryRow('ပြန်အမ်းငွေ', amount(receipt.changeAmount))}
         {!!receipt.dueAmount &&
           receipt.dueAmount > 0 &&
-          summaryRow('ကျန်ငွေ (အကြွေး)', amount(receipt.dueAmount), true)}
+          summaryRow(
+            receipt.paymentType === PAYMENT_METHODS.COD ? 'COD ကောက်ခံရန်' : 'ကျန်ငွေ (အကြွေး)',
+            amount(receipt.dueAmount),
+            true,
+          )}
       </View>
 
       <View style={styles.dashedLine} />

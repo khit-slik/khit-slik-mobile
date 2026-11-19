@@ -1,6 +1,6 @@
 import type { CreateOrderRequest } from '../../../services/pos/types';
 import type { CartItem, Totals } from './pricing';
-import { PAYMENT_METHODS, PaymentMethod, toApiPaymentMethod } from './paymentMethods';
+import { isCod, PAYMENT_METHODS, PaymentMethod, toApiPaymentMethod } from './paymentMethods';
 
 export type PaymentType = 'paid' | 'credit';
 
@@ -26,9 +26,10 @@ export interface CheckoutInput {
 
 export const isFoc = (paymentMethod: PaymentMethod) => paymentMethod === PAYMENT_METHODS.FOC;
 
-// FOC orders are free, so nothing is recorded as paid
+export const hasNoUpfrontPayment = (method: PaymentMethod) => isFoc(method) || isCod(method);
+
 export const getFinalPaidAmount = (paymentMethod: PaymentMethod, paidAmount: number) =>
-  isFoc(paymentMethod) ? 0 : paidAmount;
+  hasNoUpfrontPayment(paymentMethod) ? 0 : paidAmount;
 
 // Paid amount to prefill when the checkout screen opens
 export const getInitialPaidAmount = ({
@@ -42,7 +43,7 @@ export const getInitialPaidAmount = ({
   paidAmount: number;
   total: number;
 }) => {
-  if (isFoc(paymentMethod)) return 0;
+  if (hasNoUpfrontPayment(paymentMethod)) return 0;
   if (paymentType === 'credit') return paidAmount || 0;
   return Math.ceil(total);
 };
@@ -58,7 +59,7 @@ export const validateCheckout = ({
 }: CheckoutInput): CheckoutError | null => {
   if (items.length === 0) return 'EMPTY_CART';
 
-  if (paymentType === 'paid' && !isFoc(paymentMethod) && paidAmount < totals.total) {
+  if (paymentType === 'paid' && !hasNoUpfrontPayment(paymentMethod) && paidAmount < totals.total) {
     return 'PAID_LESS_THAN_TOTAL';
   }
 
@@ -84,7 +85,7 @@ export const buildCreateOrderPayload = (input: CheckoutInput): CreateOrderReques
     deliveryTownship: input.deliveryTownship || null,
     deliveryFee: totals.deliveryFee,
     paidAmount: getFinalPaidAmount(paymentMethod, paidAmount),
-    paymentType,
+    paymentType: isCod(paymentMethod) ? 'paid' : paymentType,
     note,
     paymentMethod: toApiPaymentMethod(paymentMethod),
     // Midnight UTC of the picked day, the same value the web POS sends

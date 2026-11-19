@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,8 +16,9 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { getErrorMessage } from '../../../services/api/client';
 import type { CompletedSale } from '../../../store/cartStore';
 import { usePrinterStore } from '../../../store/printerStore';
-import { getChangeAmount, getPaymentLabel, isFoc } from '../lib';
+import { getChangeAmount, getPaymentLabel, isCod, isFoc } from '../lib';
 import { printSale } from '../printSale';
+import { saveSaleImage } from '../saveSaleImage';
 import { colors, formatMMK, TABLET_MIN_WIDTH } from '../theme';
 
 type PrintStatus = 'idle' | 'printing' | 'printed' | 'failed';
@@ -47,19 +49,21 @@ interface Props {
   sale: CompletedSale;
   title: string;
   subtitle: string;
+  receiptAction?: 'print' | 'download';
   // Close the popup
   onExit: () => void;
   // Show the web orders list
   onViewOrders: () => void;
 }
 
-// Result of a saved order with its receipt printing, shown over the product grid
-export default function SaleDoneCard({ sale, title, subtitle, onExit, onViewOrders }: Props) {
+// Result of a saved order, shown over the product grid
+export default function SaleDoneCard({ sale, title, subtitle, receiptAction = 'print', onExit, onViewOrders }: Props) {
   const { order, totals, paymentType, paymentMethod, paidAmount, customer } = sale;
   const invoiceNumber = order.orderNumber || order._id;
   const foc = isFoc(paymentMethod);
   const change = paymentType === 'paid' && !foc ? getChangeAmount(paidAmount, totals.total) : 0;
-  const due = paymentType === 'credit' ? Math.max(0, totals.total - paidAmount) : 0;
+  const cod = isCod(paymentMethod);
+  const due = paymentType === 'credit' || cod ? Math.max(0, totals.total - paidAmount) : 0;
 
   const { width } = useWindowDimensions();
   const isTablet = width >= TABLET_MIN_WIDTH;
@@ -67,7 +71,9 @@ export default function SaleDoneCard({ sale, title, subtitle, onExit, onViewOrde
   const autoPrint = usePrinterStore((state) => state.autoPrint);
   const connectedPrinter = usePrinterStore((state) => state.connectedPrinter);
   const saveKey = `${order._id}:${sale.completedAt}`;
-  const shouldAutoPrint = autoPrint && !autoPrintedSaves.has(saveKey);
+  const canPrint = receiptAction === 'print';
+  const shouldAutoPrint = canPrint && autoPrint && !autoPrintedSaves.has(saveKey);
+  const [savingImage, setSavingImage] = useState(false);
   const [printStatus, setPrintStatus] = useState<PrintStatus>(shouldAutoPrint ? 'printing' : 'idle');
   const [printError, setPrintError] = useState('');
   // Set when printing failed for want of a printer: print on return from the printer page, if connected
@@ -107,12 +113,25 @@ export default function SaleDoneCard({ sale, title, subtitle, onExit, onViewOrde
     runPrint();
   };
 
+  const handleDownload = async () => {
+    if (savingImage) return;
+
+    setSavingImage(true);
+    try {
+      await saveSaleImage(sale);
+      Alert.alert('ဘောင်ချာပုံ သိမ်းပြီးပါပြီ', 'Photos / Gallery မှာ ကြည့်နိုင်ပါတယ်။');
+    } catch (error) {
+      Alert.alert('ဘောင်ချာပုံ မသိမ်းနိုင်ပါ', getErrorMessage(error, 'ပြန်ကြိုးစားပေးပါ။'));
+    } finally {
+      setSavingImage(false);
+    }
+  };
+
   const printing = printStatus === 'printing';
   const printLabel =
     printStatus === 'printed' ? 'ထပ်ထုတ်မယ်' : printStatus === 'failed' ? 'ပြန်ကြိုးစားမယ်' : 'Print ထုတ်မယ်';
 
   return (
-    // No tap-outside close here: the receipt may still need printing
     <SafeAreaView style={styles.overlay} edges={['top', 'bottom', 'left', 'right']}>
       <View style={[styles.card, { maxWidth: isTablet ? 540 : '95%' }]}>
         <ScrollView contentContainerStyle={styles.body} bounces={false}>
@@ -133,48 +152,68 @@ export default function SaleDoneCard({ sale, title, subtitle, onExit, onViewOrde
             <Row label="ပေးချေမှု" value={getPaymentLabel(sale)} />
             {!foc && <Row label="ပေးချေသောငွေ" value={formatMMK(paidAmount)} valueStyle={styles.paid} />}
             {due > 0 && (
-              <Row label="ကျန်ငွေ (အကြွေး)" value={formatMMK(due)} labelStyle={styles.dueLabel} valueStyle={styles.due} />
+              <Row label={cod ? "COD ကောက်ခံရန်" : "ကျန်ငွေ (အကြွေး)"} value={formatMMK(due)} labelStyle={styles.dueLabel} valueStyle={styles.due} />
             )}
             {change > 0 && <Row label="ပြန်အမ်းငွေ" value={formatMMK(change)} valueStyle={styles.change} />}
             {customer && <Row label="ဝယ်သူ" value={customer.name} />}
           </View>
 
-          <View style={styles.printStatusRow}>
-            <View style={styles.printerInfo}>
-              <Ionicons name="print-outline" size={16} color={colors.textMuted} />
-              <Text style={styles.printerName} numberOfLines={1}>
-                {connectedPrinter ? connectedPrinter.name || connectedPrinter.address : 'ပရင်တာ မချိတ်ရသေးပါ'}
-              </Text>
-            </View>
-            <TouchableOpacity onPress={() => router.push('/printer')} hitSlop={8}>
-              <Text style={styles.link}>Settings</Text>
-            </TouchableOpacity>
-          </View>
-          {printStatus === 'printed' && <Text style={styles.printedText}>ပုံနှိပ်ပြီးပါပြီ</Text>}
-          {printStatus === 'failed' && !!printError && <Text style={styles.printErrorText}>{printError}</Text>}
+          {canPrint && (
+            <>
+              <View style={styles.printStatusRow}>
+                <View style={styles.printerInfo}>
+                  <Ionicons name="print-outline" size={16} color={colors.textMuted} />
+                  <Text style={styles.printerName} numberOfLines={1}>
+                    {connectedPrinter ? connectedPrinter.name || connectedPrinter.address : 'ပရင်တာ မချိတ်ရသေးပါ'}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => router.push('/printer')} hitSlop={8}>
+                  <Text style={styles.link}>Settings</Text>
+                </TouchableOpacity>
+              </View>
+              {printStatus === 'printed' && <Text style={styles.printedText}>ပုံနှိပ်ပြီးပါပြီ</Text>}
+              {printStatus === 'failed' && !!printError && <Text style={styles.printErrorText}>{printError}</Text>}
+            </>
+          )}
 
           <View style={styles.actionRow}>
             <TouchableOpacity style={styles.exitButton} onPress={onExit} activeOpacity={0.8}>
               <Text style={styles.exitText}>ပြန်ထွက်မယ်</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.printButton, printing && styles.buttonBusy]}
-              onPress={handlePrint}
-              disabled={printing}
-              activeOpacity={0.85}
-            >
-              {printing ? (
-                <>
-                  <ActivityIndicator color="#ffffff" />
-                  <Text style={styles.printText}>ပုံနှိပ်နေပါသည်...</Text>
-                </>
-              ) : (
-                <>
-                  <Ionicons name="print-outline" size={18} color="#ffffff" />
-                  <Text style={styles.printText}>{printLabel}</Text>
-                </>
-              )}
-            </TouchableOpacity>
+            {canPrint ? (
+              <TouchableOpacity
+                style={[styles.receiptButton, printing && styles.buttonBusy]}
+                onPress={handlePrint}
+                disabled={printing}
+                activeOpacity={0.85}
+              >
+                {printing ? (
+                  <>
+                    <ActivityIndicator color="#ffffff" />
+                    <Text style={styles.receiptText}>ပုံနှိပ်နေပါသည်...</Text>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="print-outline" size={18} color="#ffffff" />
+                    <Text style={styles.receiptText}>{printLabel}</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityState={{ disabled: savingImage, busy: savingImage }}
+                style={[styles.receiptButton, savingImage && styles.buttonBusy]}
+                onPress={handleDownload}
+                disabled={savingImage}
+                activeOpacity={0.85}
+              >
+                {savingImage
+                  ? <ActivityIndicator color="#ffffff" />
+                  : <Ionicons name="download-outline" size={18} color="#ffffff" />}
+                <Text style={styles.receiptText}>ပုံဒေါင်းမယ်</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           <TouchableOpacity onPress={onViewOrders} style={styles.ordersLink} hitSlop={8}>
@@ -363,7 +402,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 15,
   },
-  printButton: {
+  receiptButton: {
     flex: 1,
     flexDirection: 'row',
     gap: 8,
@@ -376,7 +415,7 @@ const styles = StyleSheet.create({
   buttonBusy: {
     opacity: 0.7,
   },
-  printText: {
+  receiptText: {
     color: '#ffffff',
     fontWeight: '700',
     fontSize: 15,

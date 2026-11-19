@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo } from 'react';
 import { create, useStore } from 'zustand';
 
+import { YANGON_REGION_CODE } from '../features/preOrder/lib/preOrder';
 import type { CreditPersona, PosOrder, PosOrderDetail, PosProduct } from '../services/pos/types';
 import {
   getFinalPaidAmount,
@@ -13,6 +14,8 @@ import {
   changeQty,
   computeTotals,
   getInitialPaidAmount,
+  hasNoUpfrontPayment,
+  isCod,
   getTodayDateString,
   isFoc,
   OrderEditDraft,
@@ -138,10 +141,12 @@ const initialData = (): CartData => ({
 const totalOf = (state: Pick<CartData, 'items' | 'priceMode' | 'discountPercent' | 'markupAmount' | 'deliveryFee'>) =>
   computeTotals(state).total;
 
-// While the checkout screen is open, a paid (non-FOC) order's paid amount follows the total,
-// as on the web POS when making a new sale
+// A regular paid order follows its total while checkout is open.
 const withSyncedPaidAmount = (state: CartData): CartData => {
-  if (!state.isCheckoutOpen || state.paymentType !== 'paid' || isFoc(state.paymentMethod)) {
+  if (hasNoUpfrontPayment(state.paymentMethod)) {
+    return { ...state, paidAmount: 0 };
+  }
+  if (!state.isCheckoutOpen || state.paymentType !== 'paid') {
     return state;
   }
   return { ...state, paidAmount: Math.ceil(totalOf(state)) };
@@ -222,22 +227,33 @@ export const createCartStore = () => create<CartState>((set, get) => {
     },
     setPaymentMethod: (paymentMethod) => {
       // FOC is left through the payment options, not by picking a method
-      if (isFoc(get().paymentMethod)) return;
+      const state = get();
+      if (isFoc(state.paymentMethod)) return;
+      if (isCod(paymentMethod) && (state.editingOrder || state.paymentType === 'credit')) return;
       update({ paymentMethod });
     },
     setPaidAmount: (amount) => {
+      if (hasNoUpfrontPayment(get().paymentMethod)) return;
       const value = Number(amount);
       set({ paidAmount: Number.isFinite(value) && value > 0 ? Math.ceil(value) : 0 });
     },
     setCustomer: (customer) => {
       const creditPersonId = customer?._id ?? '';
       // Keep a manual override or the saved order's destination when the same customer is reselected.
-      if (creditPersonId === get().creditPersonId) return;
-      set({
+      const state = get();
+      if (creditPersonId === state.creditPersonId) return;
+      let paymentMethod = state.paymentMethod;
+      if (!state.editingOrder && state.paymentType === 'paid' && !isFoc(paymentMethod)) {
+        if (customer?.region === YANGON_REGION_CODE) paymentMethod = PAYMENT_METHODS.COD;
+        else if (isCod(paymentMethod)) paymentMethod = PAYMENT_METHODS.CASH;
+      }
+      const customerDetails = {
         creditPersonId,
         deliveryRegion: customer?.region || '',
         deliveryTownship: customer?.region ? customer.township || '' : '',
-      });
+      };
+      if (paymentMethod === state.paymentMethod) set(customerDetails);
+      else update({ ...customerDetails, paymentMethod });
     },
     setDeliveryRegion: (deliveryRegion) => {
       if (deliveryRegion !== get().deliveryRegion) set({ deliveryRegion, deliveryTownship: '' });

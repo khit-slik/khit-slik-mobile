@@ -2,7 +2,7 @@ import type { ReceiptData } from '../../../services/receiptCaptureService';
 import type { ShopSettings } from '../../../services/pos/types';
 import type { CompletedSale } from '../../../store/cartStore';
 import { isFoc, PaymentType } from './checkout';
-import { fromApiPaymentMethod, PAYMENT_METHODS, SELECTABLE_PAYMENT_METHODS } from './paymentMethods';
+import { fromApiPaymentMethod, isCod, PAYMENT_METHODS, SELECTABLE_PAYMENT_METHODS } from './paymentMethods';
 import { getChangeAmount, getSafeQty, getUnitPrice } from './pricing';
 
 export interface ReceiptBranding {
@@ -90,7 +90,7 @@ export const toReceiptData = (
     netTotal: totals.total,
     paidAmount,
     changeAmount: paymentType === 'paid' ? getChangeAmount(paidAmount, totals.total) : 0,
-    dueAmount: paymentType === 'credit' ? Math.max(0, totals.total - paidAmount) : 0,
+    dueAmount: paymentType === 'credit' || isCod(sale.paymentMethod) ? Math.max(0, totals.total - paidAmount) : 0,
     cashierName: cashierName || undefined,
     note: note.trim() || undefined,
     sequenceNumber: getSequenceNumber(order.orderNumber),
@@ -162,7 +162,7 @@ export const fromWebVoucher = (
     netTotal,
     paidAmount,
     changeAmount: type === 'paid' && !foc ? (voucher.change ?? getChangeAmount(paidAmount || 0, netTotal)) : 0,
-    dueAmount: type === 'credit' ? Math.max(0, netTotal - (paidAmount || 0)) : 0,
+    dueAmount: type === 'credit' || isCod(method) ? Math.max(0, netTotal - (paidAmount || 0)) : 0,
     cashierName: voucher.cashierName || cashierName || undefined,
     note: voucher.note?.trim() || undefined,
     sequenceNumber: getSequenceNumber(voucher.invoiceNumber) ?? voucher.receiptSequenceNumber,
