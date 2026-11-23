@@ -169,12 +169,12 @@ describe('payment methods', () => {
   });
 });
 
-it('saves COD with zero paid and keeps the checkout total', () => {
-  const cod = input({ paymentMethod: PAYMENT_METHODS.COD, paidAmount: 0 });
+it('saves COD as credit with zero paid and keeps the checkout total', () => {
+  const cod = input({ paymentMethod: PAYMENT_METHODS.COD, paymentType: 'credit', paidAmount: 0, creditPersonId: '' });
   expect(validateCheckout(cod)).toBeNull();
   expect(buildCreateOrderPayload({ ...cod, paidAmount: cod.totals.total })).toMatchObject({
     paymentMethod: 'cod',
-    paymentType: 'paid',
+    paymentType: 'credit',
     paidAmount: 0,
     finalAmount: cod.totals.total,
   });

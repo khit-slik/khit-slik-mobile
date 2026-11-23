@@ -63,7 +63,7 @@ export const validateCheckout = ({
     return 'PAID_LESS_THAN_TOTAL';
   }
 
-  if (paymentType === 'credit') {
+  if (paymentType === 'credit' && !isCod(paymentMethod)) {
     if (!creditPersonId || creditPersonId.trim() === '') return 'CUSTOMER_REQUIRED';
     if (paidAmount > totals.total) return 'CREDIT_PAID_EXCEEDS_TOTAL';
   }
@@ -85,7 +85,7 @@ export const buildCreateOrderPayload = (input: CheckoutInput): CreateOrderReques
     deliveryTownship: input.deliveryTownship || null,
     deliveryFee: totals.deliveryFee,
     paidAmount: getFinalPaidAmount(paymentMethod, paidAmount),
-    paymentType: isCod(paymentMethod) ? 'paid' : paymentType,
+    paymentType: isCod(paymentMethod) ? 'credit' : paymentType,
     note,
     paymentMethod: toApiPaymentMethod(paymentMethod),
     // Midnight UTC of the picked day, the same value the web POS sends

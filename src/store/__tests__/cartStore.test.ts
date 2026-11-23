@@ -65,13 +65,18 @@ describe('checkout delivery', () => {
     expect(store()).toMatchObject({ deliveryRegion: '', deliveryTownship: '', deliveryFee: 500 });
   });
 
-  it('defaults a newly selected Yangon customer to COD and keeps a method override', () => {
+  it('defaults a new Yangon customer to COD credit and keeps a Cash Down override', () => {
     fillCart();
     store().openCheckout();
     const customer = { _id: 'yangon-customer', region: 'yangon' };
     store().setCustomer(customer);
     store().setDeliveryFee(500);
-    expect(store()).toMatchObject({ paymentMethod: PAYMENT_METHODS.COD, paidAmount: 0 });
+    expect(store()).toMatchObject({ paymentMethod: PAYMENT_METHODS.COD, paymentType: 'credit', paidAmount: 0 });
+
+    store().setPaymentMethod(PAYMENT_METHODS.KBZ_PAY);
+    expect(store().paymentMethod).toBe(PAYMENT_METHODS.COD);
+    store().selectPaymentForm('cash_down');
+    expect(store()).toMatchObject({ paymentMethod: PAYMENT_METHODS.CASH, paymentType: 'paid', paidAmount: 3500 });
 
     store().setPaymentMethod(PAYMENT_METHODS.KBZ_PAY);
     store().setCustomer(customer);
@@ -80,7 +85,9 @@ describe('checkout delivery', () => {
     store().setCustomer({ _id: 'another-yangon-customer', region: 'yangon' });
     expect(store()).toMatchObject({ paymentMethod: PAYMENT_METHODS.COD, paidAmount: 0 });
     store().setCustomer({ _id: 'mandalay-customer', region: 'mandalay' });
-    expect(store()).toMatchObject({ paymentMethod: PAYMENT_METHODS.CASH, paidAmount: 3500 });
+    expect(store()).toMatchObject({ paymentMethod: PAYMENT_METHODS.CASH, paymentType: 'paid', paidAmount: 3500 });
+    store().selectPaymentForm('cod');
+    expect(store()).toMatchObject({ paymentMethod: PAYMENT_METHODS.COD, paymentType: 'credit', paidAmount: 0 });
   });
 
   it('retains a credit or FOC selection when a Yangon customer is selected', () => {

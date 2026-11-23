@@ -53,6 +53,7 @@ export const getSequenceNumber = (orderNumber: string | undefined) => {
 
 export const getPaymentLabel = (sale: Pick<CompletedSale, 'paymentType' | 'paymentMethod'>) => {
   if (isFoc(sale.paymentMethod)) return 'အခမဲ့ (FOC)';
+  if (isCod(sale.paymentMethod)) return 'COD';
   if (sale.paymentType === 'credit') return 'အကြွေး';
   const method = sale.paymentMethod ?? PAYMENT_METHODS.CASH;
   return SELECTABLE_PAYMENT_METHODS.find((m) => m.id === method)?.label ?? method;

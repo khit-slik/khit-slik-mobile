@@ -30,7 +30,6 @@ import {
   isFoc,
   markupPercentOf,
   PriceMode,
-  PAYMENT_METHODS,
   SELECTABLE_PAYMENT_METHODS,
   validateCheckout,
 } from '../../lib';
@@ -103,6 +102,7 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
   const foc = isFoc(cart.paymentMethod);
   const cod = isCod(cart.paymentMethod);
   const noUpfrontPayment = hasNoUpfrontPayment(cart.paymentMethod);
+  const requiresCreditCustomer = cart.paymentType === 'credit' && !cod;
   const selectedCustomer = personas.find((p) => p._id === cart.creditPersonId) ?? null;
   const activeOption: PaymentOption = foc ? 'foc' : cart.paymentType;
 
@@ -177,7 +177,7 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
                 {PAYMENT_OPTIONS.map((option) => (
                   <OptionCard
                     key={option.id}
-                    label={cod && option.id === 'paid' ? 'ပို့ချိန် ငွေချေမယ်' : option.label}
+                    label={cod && option.id === 'credit' ? 'ပို့ချိန် ငွေချေမယ် (အကြွေး)' : option.label}
                     active={activeOption === option.id}
                     onPress={() => cart.selectPaymentOption(option.id)}
                   />
@@ -191,8 +191,8 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
 
             <Section
               label="အကြွေးပေးသူ"
-              hint={cart.paymentType === 'credit' ? undefined : '(မထည့်လည်းရ)'}
-              required={cart.paymentType === 'credit'}
+              hint={requiresCreditCustomer ? undefined : '(မထည့်လည်းရ)'}
+              required={requiresCreditCustomer}
             >
               <View style={styles.customerRow}>
                 <TouchableOpacity style={styles.customerField} onPress={() => setIsPickerOpen(true)}>
@@ -256,6 +256,15 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
               </View>
             </Section>
 
+            {!cart.editingOrder && (
+              <Section label="ပေးချေမှု ပုံစံ">
+                <View style={styles.optionGrid}>
+                  <OptionCard label="COD" active={cod} disabled={foc} onPress={() => cart.selectPaymentForm('cod')} />
+                  <OptionCard label="Cash Down" active={!cod && !foc} disabled={foc} onPress={() => cart.selectPaymentForm('cash_down')} />
+                </View>
+              </Section>
+            )}
+
             <Section label="ပေးချေမှု နည်းလမ်း:" note={foc ? 'FOC အတွက် ရွေးရန်မလိုပါ' : undefined}>
               <View style={styles.optionGrid}>
                 {SELECTABLE_PAYMENT_METHODS.map((method) => (
@@ -263,19 +272,10 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
                     key={method.id}
                     label={method.label}
                     active={cart.paymentMethod === method.id}
-                    disabled={foc}
+                    disabled={noUpfrontPayment}
                     onPress={() => cart.setPaymentMethod(method.id)}
                   />
                 ))}
-                {!cart.editingOrder && cart.paymentType === 'paid' && (
-                  <OptionCard
-                    label="COD"
-                    accessibilityRole="checkbox"
-                    active={cod}
-                    disabled={foc}
-                    onPress={() => cart.setPaymentMethod(cod ? PAYMENT_METHODS.CASH : PAYMENT_METHODS.COD)}
-                  />
-                )}
               </View>
             </Section>
 
@@ -373,7 +373,7 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
               {cart.paymentType === 'paid' && !noUpfrontPayment && (
                 <SummaryRow label="ပြန်အမ်းငွေ" value={formatMMK(getChangeAmount(cart.paidAmount, totals.total))} />
               )}
-              {cart.paymentType === 'credit' && (
+              {requiresCreditCustomer && (
                 <SummaryRow
                   label="ကျန်ငွေ (အကြွေး)"
                   value={formatMMK(Math.max(0, totals.total - cart.paidAmount))}

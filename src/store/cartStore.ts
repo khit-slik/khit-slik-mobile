@@ -31,6 +31,7 @@ import {
 
 // The three payment choices on the checkout screen; FOC is a paid order with method FOC
 export type PaymentOption = 'paid' | 'credit' | 'foc';
+export type PaymentForm = 'cod' | 'cash_down';
 
 // What was sold, kept after the cart is cleared for the success screen and the receipt
 export interface CompletedSale {
@@ -85,6 +86,7 @@ export interface CartState {
   setDiscountPercent: (percent: number) => void;
   setMarkupAmount: (amount: number) => void;
   selectPaymentOption: (option: PaymentOption) => void;
+  selectPaymentForm: (form: PaymentForm) => void;
   setPaymentMethod: (method: PaymentMethod) => void;
   setPaidAmount: (amount: number) => void;
   setCustomer: (customer: Pick<CreditPersona, '_id' | 'region' | 'township'> | null) => void;
@@ -164,6 +166,15 @@ export const createCartStore = () => create<CartState>((set, get) => {
     set(withSyncedPaidAmount({ ...get(), ...patch }));
   };
 
+  const paymentFor = (form: PaymentForm): Pick<CartData, 'paymentType' | 'paymentMethod' | 'paidAmount'> => {
+    const cod = form === 'cod';
+    return {
+      paymentType: cod ? 'credit' : 'paid',
+      paymentMethod: cod ? PAYMENT_METHODS.COD : PAYMENT_METHODS.CASH,
+      paidAmount: cod ? 0 : Math.ceil(totalOf(get())),
+    };
+  };
+
   return {
     ...initialData(),
     lastSale: null,
@@ -213,6 +224,7 @@ export const createCartStore = () => create<CartState>((set, get) => {
           paidAmount: Math.ceil(totalOf(state)),
         });
       } else if (option === 'credit') {
+        if (isCod(get().paymentMethod)) return;
         set({ paymentType: 'credit', paymentMethod: PAYMENT_METHODS.CASH, paidAmount: 0 });
       } else {
         set({
@@ -225,11 +237,13 @@ export const createCartStore = () => create<CartState>((set, get) => {
         });
       }
     },
-    setPaymentMethod: (paymentMethod) => {
-      // FOC is left through the payment options, not by picking a method
+    selectPaymentForm: (form) => {
       const state = get();
-      if (isFoc(state.paymentMethod)) return;
-      if (isCod(paymentMethod) && (state.editingOrder || state.paymentType === 'credit')) return;
+      if (state.editingOrder || isFoc(state.paymentMethod) || isCod(state.paymentMethod) === (form === 'cod')) return;
+      update(paymentFor(form));
+    },
+    setPaymentMethod: (paymentMethod) => {
+      if (hasNoUpfrontPayment(get().paymentMethod) || hasNoUpfrontPayment(paymentMethod)) return;
       update({ paymentMethod });
     },
     setPaidAmount: (amount) => {
@@ -242,18 +256,20 @@ export const createCartStore = () => create<CartState>((set, get) => {
       // Keep a manual override or the saved order's destination when the same customer is reselected.
       const state = get();
       if (creditPersonId === state.creditPersonId) return;
-      let paymentMethod = state.paymentMethod;
-      if (!state.editingOrder && state.paymentType === 'paid' && !isFoc(paymentMethod)) {
-        if (customer?.region === YANGON_REGION_CODE) paymentMethod = PAYMENT_METHODS.COD;
-        else if (isCod(paymentMethod)) paymentMethod = PAYMENT_METHODS.CASH;
-      }
+      const cod = isCod(state.paymentMethod);
       const customerDetails = {
         creditPersonId,
         deliveryRegion: customer?.region || '',
         deliveryTownship: customer?.region ? customer.township || '' : '',
       };
-      if (paymentMethod === state.paymentMethod) set(customerDetails);
-      else update({ ...customerDetails, paymentMethod });
+      if (!state.editingOrder && !isFoc(state.paymentMethod) && (state.paymentType === 'paid' || cod)) {
+        const isYangon = customer?.region === YANGON_REGION_CODE;
+        if (isYangon !== cod) {
+          update({ ...customerDetails, ...paymentFor(isYangon ? 'cod' : 'cash_down') });
+          return;
+        }
+      }
+      set(customerDetails);
     },
     setDeliveryRegion: (deliveryRegion) => {
       if (deliveryRegion !== get().deliveryRegion) set({ deliveryRegion, deliveryTownship: '' });
