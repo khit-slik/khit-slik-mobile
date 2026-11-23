@@ -28,6 +28,7 @@ import {
   hasNoUpfrontPayment,
   isCod,
   isFoc,
+  isOrderPaymentFormLocked,
   markupPercentOf,
   PriceMode,
   SELECTABLE_PAYMENT_METHODS,
@@ -101,6 +102,7 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
 
   const foc = isFoc(cart.paymentMethod);
   const cod = isCod(cart.paymentMethod);
+  const paymentFormLocked = isOrderPaymentFormLocked(cart.editingOrder);
   const noUpfrontPayment = hasNoUpfrontPayment(cart.paymentMethod);
   const requiresCreditCustomer = cart.paymentType === 'credit' && !cod;
   const selectedCustomer = personas.find((p) => p._id === cart.creditPersonId) ?? null;
@@ -179,9 +181,21 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
                     key={option.id}
                     label={cod && option.id === 'credit' ? 'ပို့ချိန် ငွေချေမယ် (အကြွေး)' : option.label}
                     active={activeOption === option.id}
+                    disabled={cod && paymentFormLocked && option.id !== activeOption}
                     onPress={() => cart.selectPaymentOption(option.id)}
                   />
                 ))}
+              </View>
+            </Section>
+
+            <Section
+              label="ပေးချေမှု ပုံစံ"
+              note={paymentFormLocked && !foc
+                ? 'ပေးချေပြီးသား သို့မဟုတ် Pre-order ဖြစ်သော အော်ဒါတွင် ပေးချေမှု ပုံစံ ပြောင်းလို့မရပါ။'
+                : undefined}
+            >
+              <View style={styles.optionGrid}>
+                <OptionCard label="COD" active={cod} disabled={foc || paymentFormLocked} onPress={() => cart.selectPaymentForm('cod')} />
               </View>
             </Section>
 
@@ -256,15 +270,6 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
               </View>
             </Section>
 
-            {!cart.editingOrder && (
-              <Section label="ပေးချေမှု ပုံစံ">
-                <View style={styles.optionGrid}>
-                  <OptionCard label="COD" active={cod} disabled={foc} onPress={() => cart.selectPaymentForm('cod')} />
-                  <OptionCard label="Cash Down" active={!cod && !foc} disabled={foc} onPress={() => cart.selectPaymentForm('cash_down')} />
-                </View>
-              </Section>
-            )}
-
             <Section label="ပေးချေမှု နည်းလမ်း:" note={foc ? 'FOC အတွက် ရွေးရန်မလိုပါ' : undefined}>
               <View style={styles.optionGrid}>
                 {SELECTABLE_PAYMENT_METHODS.map((method) => (
@@ -337,7 +342,7 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
             <Section label={cod ? "ပို့ချိန် ကောက်ခံရန်" : "ပေးချေမှု ပမာဏ"}>
               <TextInput
                 style={[styles.input, styles.paidInput, noUpfrontPayment && styles.inputDisabled]}
-                value={cod ? String(totals.total) : foc ? '0' : cart.paidAmount ? String(cart.paidAmount) : ''}
+                value={cod ? String(Math.max(0, totals.total - cart.paidAmount)) : foc ? '0' : cart.paidAmount ? String(cart.paidAmount) : ''}
                 onChangeText={(text) => cart.setPaidAmount(digitsOnly(text))}
                 editable={!noUpfrontPayment}
                 placeholder={`ပမာဏ ရိုက်ထည့်ပါ (${formatMMK(totals.total)})`}

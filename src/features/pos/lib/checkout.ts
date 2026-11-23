@@ -43,8 +43,8 @@ export const getInitialPaidAmount = ({
   paidAmount: number;
   total: number;
 }) => {
-  if (hasNoUpfrontPayment(paymentMethod)) return 0;
-  if (paymentType === 'credit') return paidAmount || 0;
+  if (isFoc(paymentMethod)) return 0;
+  if (isCod(paymentMethod) || paymentType === 'credit') return paidAmount || 0;
   return Math.ceil(total);
 };
 
@@ -67,6 +67,8 @@ export const validateCheckout = ({
     if (!creditPersonId || creditPersonId.trim() === '') return 'CUSTOMER_REQUIRED';
     if (paidAmount > totals.total) return 'CREDIT_PAID_EXCEEDS_TOTAL';
   }
+
+  if (isCod(paymentMethod) && paidAmount > totals.total) return 'CREDIT_PAID_EXCEEDS_TOTAL';
 
   return null;
 };

@@ -1,5 +1,5 @@
-import type { PosProduct } from '../../services/pos/types';
-import { PAYMENT_METHODS } from '../../features/pos/lib';
+import type { PosOrderDetail, PosProduct } from '../../services/pos/types';
+import { orderToDraft, PAYMENT_METHODS } from '../../features/pos/lib';
 import { useCartStore } from '../cartStore';
 
 const oil: PosProduct = { _id: 'oil', productName: 'Oil', sellingPrice: 1000, availableQuantity: 5 };
@@ -65,7 +65,7 @@ describe('checkout delivery', () => {
     expect(store()).toMatchObject({ deliveryRegion: '', deliveryTownship: '', deliveryFee: 500 });
   });
 
-  it('defaults a new Yangon customer to COD credit and keeps a Cash Down override', () => {
+  it('defaults a new Yangon customer to COD credit and keeps a Paid override', () => {
     fillCart();
     store().openCheckout();
     const customer = { _id: 'yangon-customer', region: 'yangon' };
@@ -75,7 +75,7 @@ describe('checkout delivery', () => {
 
     store().setPaymentMethod(PAYMENT_METHODS.KBZ_PAY);
     expect(store().paymentMethod).toBe(PAYMENT_METHODS.COD);
-    store().selectPaymentForm('cash_down');
+    store().selectPaymentOption('paid');
     expect(store()).toMatchObject({ paymentMethod: PAYMENT_METHODS.CASH, paymentType: 'paid', paidAmount: 3500 });
 
     store().setPaymentMethod(PAYMENT_METHODS.KBZ_PAY);
@@ -213,6 +213,44 @@ describe('payment options', () => {
     store().selectPaymentOption('paid');
     expect(store().paymentMethod).toBe(PAYMENT_METHODS.CASH);
     expect(store().paidAmount).toBe(3000);
+  });
+});
+
+describe('payment mode when editing an order', () => {
+  const savedOrder: PosOrderDetail = {
+    _id: 'order1',
+    orderNumber: 'INV/0001',
+    ordersProducts: [{ inventoryId: oil._id, quantity: 3, unitPrice: 1000 }],
+    subTotal: 3000,
+    finalAmount: 3500,
+    deliveryFee: 500,
+    paymentMethod: 'cash',
+    paymentType: 'credit',
+    paidAmount: 0,
+  };
+
+  it('switches an unpaid order between COD and Paid without changing the delivery fee', () => {
+    store().startEdit(orderToDraft(savedOrder, new Map([[oil._id, oil]])).draft);
+    store().openCheckout();
+    store().selectPaymentForm('cod');
+    expect(store()).toMatchObject({ paymentMethod: PAYMENT_METHODS.COD, paymentType: 'credit', paidAmount: 0, deliveryFee: 500 });
+
+    store().setPaymentMethod(PAYMENT_METHODS.KBZ_PAY);
+    expect(store().paymentMethod).toBe(PAYMENT_METHODS.COD);
+    store().selectPaymentOption('paid');
+    store().setPaymentMethod(PAYMENT_METHODS.KBZ_PAY);
+    expect(store()).toMatchObject({ paymentMethod: PAYMENT_METHODS.KBZ_PAY, paymentType: 'paid', paidAmount: 3500 });
+  });
+
+  it('keeps collected COD money when opening, updating price and saving the order', () => {
+    const order = { ...savedOrder, paymentMethod: 'COD', paidAmount: 1200 };
+    store().startEdit(orderToDraft(order, new Map([[oil._id, oil]])).draft);
+    store().openCheckout();
+    store().selectPaymentOption('paid');
+    store().setDeliveryFee(800);
+
+    expect(store()).toMatchObject({ paymentMethod: PAYMENT_METHODS.COD, paymentType: 'credit', paidAmount: 1200 });
+    expect(store().completeSale(order, null).paidAmount).toBe(1200);
   });
 });
 

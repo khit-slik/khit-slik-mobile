@@ -126,6 +126,7 @@ export interface PosOrderDetail extends PosOrder {
   deliveryTownship?: string | null;
   deliveryFee?: number;
   isDeleted?: boolean;
+  isPreOrder?: boolean;
 }
 
 // PATCH /order/:orderId replaces the whole order; unitPrice keeps each line's price

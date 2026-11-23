@@ -18,6 +18,7 @@ import {
   isCod,
   getTodayDateString,
   isFoc,
+  isOrderPaymentFormLocked,
   OrderEditDraft,
   OriginalQuantities,
   PAYMENT_METHODS,
@@ -145,10 +146,10 @@ const totalOf = (state: Pick<CartData, 'items' | 'priceMode' | 'discountPercent'
 
 // A regular paid order follows its total while checkout is open.
 const withSyncedPaidAmount = (state: CartData): CartData => {
-  if (hasNoUpfrontPayment(state.paymentMethod)) {
+  if (isFoc(state.paymentMethod)) {
     return { ...state, paidAmount: 0 };
   }
-  if (!state.isCheckoutOpen || state.paymentType !== 'paid') {
+  if (isCod(state.paymentMethod) || !state.isCheckoutOpen || state.paymentType !== 'paid') {
     return state;
   }
   return { ...state, paidAmount: Math.ceil(totalOf(state)) };
@@ -216,15 +217,16 @@ export const createCartStore = () => create<CartState>((set, get) => {
     setMarkupAmount: (amount) => update({ markupAmount: Number(amount) || 0 }),
 
     selectPaymentOption: (option) => {
+      const state = get();
+      if (isCod(state.paymentMethod) && isOrderPaymentFormLocked(state.editingOrder)) return;
       if (option === 'paid') {
-        const state = get();
         set({
           paymentType: 'paid',
           paymentMethod: PAYMENT_METHODS.CASH,
           paidAmount: Math.ceil(totalOf(state)),
         });
       } else if (option === 'credit') {
-        if (isCod(get().paymentMethod)) return;
+        if (isCod(state.paymentMethod)) return;
         set({ paymentType: 'credit', paymentMethod: PAYMENT_METHODS.CASH, paidAmount: 0 });
       } else {
         set({
@@ -239,7 +241,8 @@ export const createCartStore = () => create<CartState>((set, get) => {
     },
     selectPaymentForm: (form) => {
       const state = get();
-      if (state.editingOrder || isFoc(state.paymentMethod) || isCod(state.paymentMethod) === (form === 'cod')) return;
+      if (isOrderPaymentFormLocked(state.editingOrder) || isFoc(state.paymentMethod) ||
+          isCod(state.paymentMethod) === (form === 'cod')) return;
       update(paymentFor(form));
     },
     setPaymentMethod: (paymentMethod) => {
@@ -304,7 +307,9 @@ export const createCartStore = () => create<CartState>((set, get) => {
         totals: computeTotals(state),
         paymentType: state.paymentType,
         paymentMethod: state.paymentMethod,
-        paidAmount: getFinalPaidAmount(state.paymentMethod, state.paidAmount),
+        paidAmount: isCod(state.paymentMethod)
+          ? state.paidAmount
+          : getFinalPaidAmount(state.paymentMethod, state.paidAmount),
         customer,
         note: state.note,
         orderDate: state.orderDate,

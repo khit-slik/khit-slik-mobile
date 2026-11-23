@@ -37,6 +37,7 @@ export const toApiPaymentMethod = (method: PaymentMethod): ApiPaymentMethod => T
 
 // Orders loaded for editing carry the API value; anything unknown falls back to cash like the web POS
 export const fromApiPaymentMethod = (value: string | null | undefined): PaymentMethod => {
+  if (value?.trim().toLowerCase() === TO_API[PAYMENT_METHODS.COD]) return PAYMENT_METHODS.COD;
   const match = (Object.keys(TO_API) as PaymentMethod[]).find((method) => TO_API[method] === value);
   return match ?? PAYMENT_METHODS.CASH;
 };

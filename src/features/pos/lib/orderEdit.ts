@@ -1,7 +1,7 @@
 import type { OrderLine, PersonRef, PosOrderDetail, PosProduct, UpdateOrderRequest } from '../../../services/pos/types';
 import type { OriginalQuantities } from './cart';
 import { buildCreateOrderPayload, CheckoutInput, getTodayDateString, isFoc, PaymentType } from './checkout';
-import { fromApiPaymentMethod, PaymentMethod } from './paymentMethods';
+import { fromApiPaymentMethod, isCod, PaymentMethod } from './paymentMethods';
 import { CartItem, getSafeQty, getUnitPrice, PriceMode } from './pricing';
 
 // Everything the cart needs to pick up a saved order where it was left
@@ -31,6 +31,9 @@ export const getLineProductId = (line: OrderLine) => refId(line.inventoryId);
 // The order's customer; older orders may only have customerId set
 export const getOrderCustomerId = (order: PosOrderDetail) =>
   refId(order.creditPersonId) || refId(order.customerId);
+
+export const isOrderPaymentFormLocked = (order: PosOrderDetail | null) =>
+  order !== null && (order.isPreOrder === true || (order.paidAmount || 0) > 0);
 
 export const getOrderCustomer = (order: PosOrderDetail): PersonRef | null => {
   const ref = order.creditPersonId || order.customerId;
@@ -119,7 +122,7 @@ export const orderToDraft = (
       items,
       originalQuantities,
       ...toPricing(order, foc),
-      paymentType: order.paymentType === 'credit' ? 'credit' : 'paid',
+      paymentType: isCod(paymentMethod) || order.paymentType === 'credit' ? 'credit' : 'paid',
       paymentMethod,
       paidAmount: foc ? 0 : order.paidAmount || 0,
       creditPersonId: getOrderCustomerId(order),
@@ -136,6 +139,7 @@ export const orderToDraft = (
 // Same fields as a new sale, plus each line's price
 export const buildUpdateOrderPayload = (input: CheckoutInput): UpdateOrderRequest => ({
   ...buildCreateOrderPayload(input),
+  ...(isCod(input.paymentMethod) ? { paidAmount: input.paidAmount } : {}),
   ordersProducts: input.items.map((item) => ({
     inventoryId: item.product._id,
     quantity: item.qty,

@@ -181,6 +181,14 @@ describe('buildUpdateOrderPayload', () => {
   it('records nothing paid for FOC', () => {
     expect(buildUpdateOrderPayload(input({ paymentMethod: PAYMENT_METHODS.FOC })).paidAmount).toBe(0);
   });
+
+  it('sends the saved COD payment when updating the order', () => {
+    expect(buildUpdateOrderPayload(input({ paymentMethod: PAYMENT_METHODS.COD, paidAmount: 1200 }))).toMatchObject({
+      paymentMethod: 'cod',
+      paymentType: 'credit',
+      paidAmount: 1200,
+    });
+  });
 });
 
 describe('stock changed by the edit', () => {
