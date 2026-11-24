@@ -164,9 +164,8 @@ export default function ReceiptPrintTemplate({ receipt, paperWidth, onLogoSettle
 
       <View style={styles.dashedLine} />
 
-      {/* 7. Payment */}
+      {/* 7. Payment amounts (the payment type and method are not printed) */}
       <View style={styles.summary}>
-        {!!receipt.paymentType && summaryRow('ငွေပေးချေမှု', receipt.paymentType)}
         {receipt.paidAmount !== undefined && summaryRow('ပေးငွေ', amount(receipt.paidAmount))}
         {!!receipt.changeAmount &&
           receipt.changeAmount > 0 &&

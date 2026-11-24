@@ -368,7 +368,7 @@ export const printerService = {
     await totalRow('TOTAL:', amount(receipt.netTotal));
     await line(separator.trimEnd());
 
-    if (receipt.paymentType) await totalRow('Payment:', receipt.paymentType);
+    // The payment type and method are not printed, only the amounts
     if (receipt.paidAmount !== undefined) await totalRow('Paid:', amount(receipt.paidAmount));
     if (receipt.changeAmount) await totalRow('Change:', amount(receipt.changeAmount));
     if (receipt.dueAmount) await totalRow('Balance due:', amount(receipt.dueAmount));
