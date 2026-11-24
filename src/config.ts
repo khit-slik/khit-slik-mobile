@@ -6,8 +6,7 @@ export const WEB_APP_URL = (
 
 // Override per build with EXPO_PUBLIC_API_BASE_URL (e.g. a local backend while developing).
 export const API_BASE_URL = (
-  process.env.EXPO_PUBLIC_API_BASE_URL ||
-  '' // TODO: khit-slik production backend URL (e.g. 'https://<khit-slik-backend>/api/v1')
+  'https://khit-slik-backend-production.up.railway.app/api/v1' // TODO: khit-slik production backend URL (e.g. 'https://<khit-slik-backend>/api/v1')
 ).replace(/\/+$/, '');
 
 export const API_TIMEOUT_MS = 20000;

@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "AutoShop",
-    "slug": "commercial-mobile",
+    "name": "Khit Slik POS",
+    "slug": "khit-slik-pos",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/logo.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.otas.autoshop"
+      "bundleIdentifier": "com.otas.khit-slik-pos"
     },
     "android": {
       "adaptiveIcon": {
@@ -16,10 +16,13 @@
         "foregroundImage": "./assets/logo.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.otas.autoshop",
+      "package": "com.otas.khit-slik-pos",
       "permissions": [
         "android.permission.BLUETOOTH_CONNECT",
-        "android.permission.BLUETOOTH_SCAN"
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
       ],
       "runtimeVersion": {
         "policy": "fingerprint"
@@ -65,16 +68,16 @@
         }
       ]
     ],
-    "scheme": "autoshop",
+    "scheme": "khit-slik-pos",
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "c94c1639-8ce0-42ed-a89b-3fbbe80dc235"
+        "projectId": "6f5f0b04-393d-4cff-a248-515681886b53"
       }
     },
-    "owner": "acehidan"
+    "owner": "aaog2"
   }
 }
