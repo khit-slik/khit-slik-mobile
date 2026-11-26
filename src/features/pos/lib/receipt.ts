@@ -51,11 +51,11 @@ export const getSequenceNumber = (orderNumber: string | undefined) => {
   return Number.isFinite(value) && value > 0 ? value : undefined;
 };
 
-export const getPaymentLabel = (sale: Pick<CompletedSale, 'paymentType' | 'paymentMethod'>) => {
-  if (isFoc(sale.paymentMethod)) return 'အခမဲ့ (FOC)';
-  if (isCod(sale.paymentMethod)) return 'COD';
-  if (sale.paymentType === 'credit') return 'အကြွေး';
-  const method = sale.paymentMethod ?? PAYMENT_METHODS.CASH;
+export const getPaymentLabel = (sale: Pick<CompletedSale, 'paymentType' | 'paymentMethod'> & { paymentMode?: CompletedSale['paymentMode'] | null }) => {
+  if (sale.paymentMode === 'foc' || isFoc(sale.paymentMethod)) return 'အခမဲ့ (FOC)';
+  if (sale.paymentMode === 'cod' || isCod(sale.paymentMethod)) return 'COD';
+  if (sale.paymentMode === 'cashdown' || sale.paymentType === 'credit') return 'Cashdown (KBZPay)';
+  const method = sale.paymentMethod ?? PAYMENT_METHODS.KBZ_PAY;
   return SELECTABLE_PAYMENT_METHODS.find((m) => m.id === method)?.label ?? method;
 };
 
@@ -90,8 +90,8 @@ export const toReceiptData = (
     serviceCharge: totals.deliveryFee || undefined,
     netTotal: totals.total,
     paidAmount,
-    changeAmount: paymentType === 'paid' ? getChangeAmount(paidAmount, totals.total) : 0,
-    dueAmount: paymentType === 'credit' || isCod(sale.paymentMethod) ? Math.max(0, totals.total - paidAmount) : 0,
+    changeAmount: sale.paymentMode === 'foc' || isFoc(sale.paymentMethod) ? 0 : getChangeAmount(paidAmount, totals.total),
+    dueAmount: sale.paymentMode === 'foc' || isFoc(sale.paymentMethod) ? 0 : Math.max(0, totals.total - paidAmount),
     cashierName: cashierName || undefined,
     note: note.trim() || undefined,
     sequenceNumber: getSequenceNumber(order.orderNumber),

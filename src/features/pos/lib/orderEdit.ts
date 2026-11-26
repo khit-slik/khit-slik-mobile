@@ -1,7 +1,15 @@
 import type { OrderLine, PersonRef, PosOrderDetail, PosProduct, UpdateOrderRequest } from '../../../services/pos/types';
 import type { OriginalQuantities } from './cart';
-import { buildCreateOrderPayload, CheckoutInput, getTodayDateString, isFoc, PaymentType } from './checkout';
-import { fromApiPaymentMethod, isCod, PaymentMethod } from './paymentMethods';
+import {
+  buildCreateOrderPayload,
+  CheckoutInput,
+  getTodayDateString,
+  isFoc,
+  PaymentMode,
+  PaymentType,
+  resolvePaymentMode,
+} from './checkout';
+import { fromApiPaymentMethod, isCod, PAYMENT_METHODS, PaymentMethod } from './paymentMethods';
 import { CartItem, getSafeQty, getUnitPrice, PriceMode } from './pricing';
 
 // Everything the cart needs to pick up a saved order where it was left
@@ -12,6 +20,7 @@ export interface OrderEditDraft {
   priceMode: PriceMode;
   discountPercent: number;
   markupAmount: number;
+  paymentMode: PaymentMode | null;
   paymentType: PaymentType;
   paymentMethod: PaymentMethod;
   paidAmount: number;
@@ -32,8 +41,31 @@ export const getLineProductId = (line: OrderLine) => refId(line.inventoryId);
 export const getOrderCustomerId = (order: PosOrderDetail) =>
   refId(order.creditPersonId) || refId(order.customerId);
 
+const LOCKED_WORKFLOW_STATUSES = [
+  'packing',
+  'packed',
+  'pack_checked',
+  'finance_adjustment',
+  'finance_approved',
+  'delivered',
+];
+
+export const isOrderEditLocked = (order: PosOrderDetail | null) =>
+  order !== null &&
+  (order.isPreOrder === true ||
+    order.orderStatus === 'cancelled' ||
+    (order.workflowStatus != null && LOCKED_WORKFLOW_STATUSES.includes(order.workflowStatus)));
+
+export const isCashdownKpayModeLocked = (order: PosOrderDetail | null) =>
+  order !== null &&
+  order.isPreOrder !== true &&
+  resolvePaymentMode({ paymentMode: order.paymentMode }) === 'cashdown' &&
+  (order.hasKpayTransactions === true ||
+    order.paymentVerificationStatus === 'partial' ||
+    order.paymentVerificationStatus === 'verified');
+
 export const isOrderPaymentFormLocked = (order: PosOrderDetail | null) =>
-  order !== null && (order.isPreOrder === true || (order.paidAmount || 0) > 0);
+  isOrderEditLocked(order);
 
 export const getOrderCustomer = (order: PosOrderDetail): PersonRef | null => {
   const ref = order.creditPersonId || order.customerId;
@@ -114,17 +146,29 @@ export const orderToDraft = (
     items.push({ product: toCartProduct(line, qty, freshProducts.get(id)), qty });
   }
 
-  const paymentMethod = fromApiPaymentMethod(order.paymentMethod);
+  const mode = resolvePaymentMode({
+    paymentMode: order.paymentMode,
+  });
+  const paymentMethod =
+    mode === 'cod'
+      ? PAYMENT_METHODS.COD
+      : mode === 'foc'
+        ? PAYMENT_METHODS.FOC
+        : mode === 'cashdown'
+          ? PAYMENT_METHODS.KBZ_PAY
+          : fromApiPaymentMethod(order.paymentMethod);
   const foc = isFoc(paymentMethod);
+  const cod = isCod(paymentMethod);
   return {
     draft: {
       order,
       items,
       originalQuantities,
       ...toPricing(order, foc),
-      paymentType: isCod(paymentMethod) || order.paymentType === 'credit' ? 'credit' : 'paid',
+      paymentMode: mode,
+      paymentType: mode === 'cashdown' ? 'credit' : 'paid',
       paymentMethod,
-      paidAmount: foc ? 0 : order.paidAmount || 0,
+      paidAmount: foc ? 0 : cod ? Math.ceil(order.finalAmount ?? order.paidAmount ?? 0) : order.paidAmount || 0,
       creditPersonId: getOrderCustomerId(order),
       deliveryRegion: order.deliveryRegion ?? '',
       deliveryTownship: order.deliveryTownship ?? '',
@@ -139,7 +183,6 @@ export const orderToDraft = (
 // Same fields as a new sale, plus each line's price
 export const buildUpdateOrderPayload = (input: CheckoutInput): UpdateOrderRequest => ({
   ...buildCreateOrderPayload(input),
-  ...(isCod(input.paymentMethod) ? { paidAmount: input.paidAmount } : {}),
   ordersProducts: input.items.map((item) => ({
     inventoryId: item.product._id,
     quantity: item.qty,

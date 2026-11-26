@@ -19,6 +19,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { CreditPersona } from '../../../../services/pos/types';
 import { PaymentOption, useCart, useCartTotals } from '../../../../store/cartStore';
 import { toast } from '../../../../store/toastStore';
+import { YANGON_REGION_CODE } from '../../../preOrder/lib/preOrder';
 import { useMyanmarLocations } from '../../../preOrder/hooks/useMyanmarLocations';
 import { useCreditPersonas } from '../../hooks/usePosData';
 import {
@@ -28,10 +29,13 @@ import {
   hasNoUpfrontPayment,
   isCod,
   isFoc,
+  isCashdownKpayModeLocked,
   isOrderPaymentFormLocked,
   markupPercentOf,
+  PAYMENT_METHODS,
+  PaymentMode,
   PriceMode,
-  SELECTABLE_PAYMENT_METHODS,
+  resolvePaymentMode,
   validateCheckout,
 } from '../../lib';
 import { colors, formatMMK, TABLET_MIN_WIDTH } from '../../theme';
@@ -42,10 +46,10 @@ import CustomerPicker, { customerLabel } from './CustomerPicker';
 import DiscountCalculatorSheet from './DiscountCalculatorSheet';
 import OptionCard from './OptionCard';
 
-const PAYMENT_OPTIONS: { id: PaymentOption; label: string }[] = [
-  { id: 'paid', label: 'ပေးချေပြီး' },
-  { id: 'credit', label: 'မပေးချေရသေး (အကြွေး)' },
-  { id: 'foc', label: 'အခမဲ့ (FOC)' },
+const PAYMENT_MODE_OPTIONS: { id: PaymentMode; label: string }[] = [
+  { id: 'cod', label: 'COD' },
+  { id: 'cashdown', label: 'Cashdown' },
+  { id: 'foc', label: 'FOC' },
 ];
 
 const PRICE_MODES: { id: PriceMode; label: string }[] = [
@@ -77,8 +81,9 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
     [listed, extraCustomer],
   );
 
-  const { regions, regionLabel } = useMyanmarLocations();
+  const { regions, yangonTownships, regionLabel, townshipLabel } = useMyanmarLocations();
   const [isRegionPickerOpen, setIsRegionPickerOpen] = useState(false);
+  const [isTownshipPickerOpen, setIsTownshipPickerOpen] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
@@ -100,19 +105,31 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
   }, [isEmpty, close]);
   if (isEmpty) return null;
 
-  const foc = isFoc(cart.paymentMethod);
-  const cod = isCod(cart.paymentMethod);
+  const activeMode =
+    cart.paymentMode ??
+    resolvePaymentMode({
+      paymentMethod: cart.paymentMethod,
+      paymentType: cart.paymentType,
+    });
+  const foc = activeMode === 'foc' || isFoc(cart.paymentMethod);
+  const cod = activeMode === 'cod' || isCod(cart.paymentMethod);
+  const cashdown = activeMode === 'cashdown';
+  const isNonYangonRegion = Boolean(
+    cart.deliveryRegion && cart.deliveryRegion !== YANGON_REGION_CODE,
+  );
+  const codAllowed = !isNonYangonRegion;
+  const codRegionConflict = cod && isNonYangonRegion;
   const paymentFormLocked = isOrderPaymentFormLocked(cart.editingOrder);
-  const noUpfrontPayment = hasNoUpfrontPayment(cart.paymentMethod);
-  const requiresCreditCustomer = cart.paymentType === 'credit' && !cod;
+  const kpayModeLocked = isCashdownKpayModeLocked(cart.editingOrder);
+  const noUpfrontPayment = cod || foc || hasNoUpfrontPayment(cart.paymentMethod);
   const selectedCustomer = personas.find((p) => p._id === cart.creditPersonId) ?? null;
-  const activeOption: PaymentOption = foc ? 'foc' : cart.paymentType;
 
   const input: CheckoutInput = {
     items: cart.items,
     totals,
-    paymentType: cart.paymentType,
-    paymentMethod: cart.paymentMethod,
+    paymentMode: activeMode,
+    paymentType: cashdown ? 'credit' : 'paid',
+    paymentMethod: cod ? PAYMENT_METHODS.COD : foc ? PAYMENT_METHODS.FOC : PAYMENT_METHODS.KBZ_PAY,
     paidAmount: cart.paidAmount,
     creditPersonId: cart.creditPersonId,
     deliveryRegion: cart.deliveryRegion,
@@ -174,40 +191,7 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
           </View>
 
           <ScrollView style={styles.scroll} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-            <Section label="ပေးချေမှု အမျိုးအစား:">
-              <View style={styles.optionGrid}>
-                {PAYMENT_OPTIONS.map((option) => (
-                  <OptionCard
-                    key={option.id}
-                    label={cod && option.id === 'credit' ? 'ပို့ချိန် ငွေချေမယ် (အကြွေး)' : option.label}
-                    active={activeOption === option.id}
-                    disabled={cod && paymentFormLocked && option.id !== activeOption}
-                    onPress={() => cart.selectPaymentOption(option.id)}
-                  />
-                ))}
-              </View>
-            </Section>
-
-            <Section
-              label="ပေးချေမှု ပုံစံ"
-              note={paymentFormLocked && !foc
-                ? 'ပေးချေပြီးသား သို့မဟုတ် Pre-order ဖြစ်သော အော်ဒါတွင် ပေးချေမှု ပုံစံ ပြောင်းလို့မရပါ။'
-                : undefined}
-            >
-              <View style={styles.optionGrid}>
-                <OptionCard label="COD" active={cod} disabled={foc || paymentFormLocked} onPress={() => cart.selectPaymentForm('cod')} />
-              </View>
-            </Section>
-
-            <Section label="ဘောင်ချာ ရက်စွဲ">
-              <OrderDateField value={cart.orderDate} onChange={cart.setOrderDate} />
-            </Section>
-
-            <Section
-              label="အကြွေးပေးသူ"
-              hint={requiresCreditCustomer ? undefined : '(မထည့်လည်းရ)'}
-              required={requiresCreditCustomer}
-            >
+            <Section label="Customer" required>
               <View style={styles.customerRow}>
                 <TouchableOpacity style={styles.customerField} onPress={() => setIsPickerOpen(true)}>
                   <Ionicons name="person-outline" size={18} color={colors.textMuted} />
@@ -236,6 +220,13 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
                   <Text style={styles.addCustomerText}>{isTablet ? 'အသစ်ထည့်မယ်' : 'အသစ်'}</Text>
                 </TouchableOpacity>
               </View>
+              {!!selectedCustomer?.address && (
+                <Text style={styles.hint}>လိပ်စာ: {selectedCustomer.address}</Text>
+              )}
+            </Section>
+
+            <Section label="ဘောင်ချာ ရက်စွဲ">
+              <OrderDateField value={cart.orderDate} onChange={cart.setOrderDate} />
             </Section>
 
             <Section label="ပို့ဆောင်ရန်" hint="(မထည့်လည်းရ)">
@@ -253,6 +244,20 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
                   </Text>
                   <Ionicons name="chevron-down" size={18} color={colors.textMuted} />
                 </TouchableOpacity>
+                {cart.deliveryRegion === YANGON_REGION_CODE && (
+                  <TouchableOpacity
+                    style={[styles.customerField, !isTablet && styles.deliveryRegionField]}
+                    onPress={() => setIsTownshipPickerOpen(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel="မြို့နယ် ရွေးပါ"
+                  >
+                    <Ionicons name="navigate-outline" size={18} color={colors.textMuted} />
+                    <Text style={[styles.customerText, !cart.deliveryTownship && styles.placeholder]} numberOfLines={1}>
+                      {cart.deliveryTownship ? townshipLabel(cart.deliveryTownship) : 'မြို့နယ် ရွေးပါ'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={18} color={colors.textMuted} />
+                  </TouchableOpacity>
+                )}
                 <View style={[styles.deliveryFeeField, isTablet && styles.flex]}>
                   <TextInput
                     style={[styles.input, styles.deliveryFeeInput]}
@@ -270,19 +275,59 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
               </View>
             </Section>
 
-            <Section label="ပေးချေမှု နည်းလမ်း:" note={foc ? 'FOC အတွက် ရွေးရန်မလိုပါ' : undefined}>
+            <Section
+              label="ပေးချေမှု ပုံစံ"
+              note={
+                paymentFormLocked
+                  ? 'ပေးချေမှု ပုံစံ ပြောင်းလို့မရပါ။'
+                  : kpayModeLocked
+                    ? 'KPay ငွေလွှဲ မှတ်တမ်းရှိပြီးသား Cashdown အော်ဒါကို COD သို့မဟုတ် FOC သို့ ပြောင်းလို့မရပါ။'
+                    : !codAllowed
+                      ? 'ရန်ကုန်တိုင်းပြင်ပအတွက် Cashdown (KPay) သာ ရပါမယ်'
+                      : !cart.deliveryRegion && !activeMode
+                        ? 'တိုင်း/ပြည်နယ် မရှိသေးပါ — COD သို့မဟုတ် Cashdown ရွေးပါ'
+                        : undefined
+              }
+            >
               <View style={styles.optionGrid}>
-                {SELECTABLE_PAYMENT_METHODS.map((method) => (
+                {PAYMENT_MODE_OPTIONS.map((option) => (
                   <OptionCard
-                    key={method.id}
-                    label={method.label}
-                    active={cart.paymentMethod === method.id}
-                    disabled={noUpfrontPayment}
-                    onPress={() => cart.setPaymentMethod(method.id)}
+                    key={option.id}
+                    label={option.label}
+                    active={activeMode === option.id}
+                    disabled={
+                      paymentFormLocked ||
+                      (kpayModeLocked && option.id !== 'cashdown') ||
+                      (option.id === 'cod' && !codAllowed)
+                    }
+                    onPress={() => {
+                      if (kpayModeLocked && option.id !== 'cashdown') {
+                        toast.error('KPay ငွေလွှဲ မှတ်တမ်းရှိပြီးသား Cashdown အော်ဒါကို COD သို့မဟုတ် FOC သို့ ပြောင်းလို့မရပါ');
+                        return;
+                      }
+                      cart.selectPaymentMode(option.id);
+                    }}
                   />
                 ))}
               </View>
+              {codRegionConflict && (
+                <Text style={styles.validation}>
+                  ရန်ကုန်တိုင်းပြင်ပ ဒေသသို့ ပြောင်းလဲထားသောကြောင့် Cashdown သို့ ကိုယ်တိုင်ပြောင်းလဲပါ။
+                </Text>
+              )}
             </Section>
+
+            {cashdown && (
+              <Section label="ပေးချေမှု နည်းလမ်း:">
+                <View style={styles.optionGrid}>
+                  <OptionCard
+                    label="KBZPay"
+                    active={true}
+                    onPress={() => cart.setPaymentMethod(PAYMENT_METHODS.KBZ_PAY)}
+                  />
+                </View>
+              </Section>
+            )}
 
             <Section
               label="ဈေးနှုန်း အမျိုးအစား:"
@@ -339,12 +384,12 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
               </Section>
             )}
 
-            <Section label={cod ? "ပို့ချိန် ကောက်ခံရန်" : "ပေးချေမှု ပမာဏ"}>
+            <Section label={cod ? "COD ငွေပမာဏ (ကျသင့်ငွေအပြည့်)" : "ပေးချေမှု ပမာဏ"}>
               <TextInput
-                style={[styles.input, styles.paidInput, noUpfrontPayment && styles.inputDisabled]}
-                value={cod ? String(Math.max(0, totals.total - cart.paidAmount)) : foc ? '0' : cart.paidAmount ? String(cart.paidAmount) : ''}
+                style={[styles.input, styles.paidInput, (noUpfrontPayment || !activeMode) && styles.inputDisabled]}
+                value={cod ? String(Math.ceil(totals.total)) : foc ? '0' : cart.paidAmount ? String(cart.paidAmount) : ''}
                 onChangeText={(text) => cart.setPaidAmount(digitsOnly(text))}
-                editable={!noUpfrontPayment}
+                editable={!noUpfrontPayment && !!activeMode}
                 placeholder={`ပမာဏ ရိုက်ထည့်ပါ (${formatMMK(totals.total)})`}
                 placeholderTextColor={colors.textFaint}
                 keyboardType="number-pad"
@@ -374,15 +419,9 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
               {totals.deliveryFee > 0 && (
                 <SummaryRow label="ပို့ခ" value={`+ ${formatMMK(totals.deliveryFee)}`} />
               )}
-              <SummaryRow label={cod ? "COD ကောက်ခံရန်" : "ကျသင့်ငွေ"} value={formatMMK(totals.total)} strong />
-              {cart.paymentType === 'paid' && !noUpfrontPayment && (
+              <SummaryRow label="ကျသင့်ငွေ" value={formatMMK(totals.total)} strong />
+              {cashdown && cart.paidAmount > totals.total && (
                 <SummaryRow label="ပြန်အမ်းငွေ" value={formatMMK(getChangeAmount(cart.paidAmount, totals.total))} />
-              )}
-              {requiresCreditCustomer && (
-                <SummaryRow
-                  label="ကျန်ငွေ (အကြွေး)"
-                  value={formatMMK(Math.max(0, totals.total - cart.paidAmount))}
-                />
               )}
             </View>
           </ScrollView>
@@ -429,6 +468,14 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
         selected={cart.deliveryRegion}
         onSelect={cart.setDeliveryRegion}
         onClose={() => setIsRegionPickerOpen(false)}
+      />
+      <OptionPickerSheet
+        visible={isTownshipPickerOpen}
+        title="မြို့နယ်"
+        options={[{ value: '', label: 'မရွေးပါ' }, ...yangonTownships.map((t) => ({ value: t.code, label: t.my }))]}
+        selected={cart.deliveryTownship}
+        onSelect={cart.setDeliveryTownship}
+        onClose={() => setIsTownshipPickerOpen(false)}
       />
       <DiscountCalculatorSheet
         visible={isCalculatorOpen}

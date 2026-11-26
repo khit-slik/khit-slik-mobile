@@ -18,19 +18,22 @@ import {
   isCod,
   getTodayDateString,
   isFoc,
+  isCashdownKpayModeLocked,
   isOrderPaymentFormLocked,
   OrderEditDraft,
   OriginalQuantities,
   PAYMENT_METHODS,
   PaymentMethod,
+  PaymentMode,
   PaymentType,
   PriceMode,
   removeItem,
+  resolvePaymentMode,
   setItemQty,
   withFreshStock,
 } from '../features/pos/lib';
 
-// The three payment choices on the checkout screen; FOC is a paid order with method FOC
+// Business payment modes for regular POS orders
 export type PaymentOption = 'paid' | 'credit' | 'foc';
 export type PaymentForm = 'cod' | 'cash_down';
 
@@ -39,6 +42,7 @@ export interface CompletedSale {
   order: PosOrder;
   items: CartItem[];
   totals: Totals;
+  paymentMode?: PaymentMode;
   paymentType: PaymentType;
   paymentMethod: PaymentMethod;
   paidAmount: number;
@@ -54,6 +58,7 @@ export interface CartState {
   priceMode: PriceMode;
   discountPercent: number;
   markupAmount: number;
+  paymentMode: PaymentMode | null;
   paymentType: PaymentType;
   paymentMethod: PaymentMethod;
   paidAmount: number;
@@ -86,12 +91,14 @@ export interface CartState {
   setPriceMode: (mode: PriceMode) => void;
   setDiscountPercent: (percent: number) => void;
   setMarkupAmount: (amount: number) => void;
+  selectPaymentMode: (mode: PaymentMode) => void;
   selectPaymentOption: (option: PaymentOption) => void;
   selectPaymentForm: (form: PaymentForm) => void;
   setPaymentMethod: (method: PaymentMethod) => void;
   setPaidAmount: (amount: number) => void;
   setCustomer: (customer: Pick<CreditPersona, '_id' | 'region' | 'township'> | null) => void;
   setDeliveryRegion: (region: string) => void;
+  setDeliveryTownship: (township: string) => void;
   setDeliveryFee: (fee: number) => void;
   setNote: (note: string) => void;
   setOrderDate: (date: string) => void;
@@ -109,6 +116,7 @@ type CartData = Pick<
   | 'priceMode'
   | 'discountPercent'
   | 'markupAmount'
+  | 'paymentMode'
   | 'paymentType'
   | 'paymentMethod'
   | 'paidAmount'
@@ -128,8 +136,9 @@ const initialData = (): CartData => ({
   priceMode: 'normal',
   discountPercent: 0,
   markupAmount: 0,
+  paymentMode: null,
   paymentType: 'paid',
-  paymentMethod: PAYMENT_METHODS.CASH,
+  paymentMethod: PAYMENT_METHODS.COD,
   paidAmount: 0,
   creditPersonId: '',
   deliveryRegion: '',
@@ -144,15 +153,25 @@ const initialData = (): CartData => ({
 const totalOf = (state: Pick<CartData, 'items' | 'priceMode' | 'discountPercent' | 'markupAmount' | 'deliveryFee'>) =>
   computeTotals(state).total;
 
-// A regular paid order follows its total while checkout is open.
+// Syncs paidAmount to confirmed rules:
+// - COD (Option B): paidAmount = finalAmount
+// - FOC: paidAmount = 0
+// - Cashdown: full payment required when checkout opens or total grows
 const withSyncedPaidAmount = (state: CartData): CartData => {
-  if (isFoc(state.paymentMethod)) {
+  const mode = state.paymentMode ?? resolvePaymentMode(state);
+  if (mode === 'foc' || isFoc(state.paymentMethod)) {
     return { ...state, paidAmount: 0 };
   }
-  if (isCod(state.paymentMethod) || !state.isCheckoutOpen || state.paymentType !== 'paid') {
-    return state;
+  if (mode === 'cod' || isCod(state.paymentMethod)) {
+    return { ...state, paidAmount: Math.ceil(totalOf(state)) };
   }
-  return { ...state, paidAmount: Math.ceil(totalOf(state)) };
+  if (mode === 'cashdown' && state.isCheckoutOpen) {
+    const total = Math.ceil(totalOf(state));
+    if (state.paidAmount < total) {
+      return { ...state, paidAmount: total };
+    }
+  }
+  return state;
 };
 
 export const createCartStore = () => create<CartState>((set, get) => {
@@ -167,12 +186,50 @@ export const createCartStore = () => create<CartState>((set, get) => {
     set(withSyncedPaidAmount({ ...get(), ...patch }));
   };
 
-  const paymentFor = (form: PaymentForm): Pick<CartData, 'paymentType' | 'paymentMethod' | 'paidAmount'> => {
-    const cod = form === 'cod';
+  const modeFields = (
+    mode: PaymentMode,
+  ): Pick<CartData, 'paymentMode' | 'paymentType' | 'paymentMethod' | 'paidAmount' | 'priceMode' | 'discountPercent' | 'markupAmount'> => {
+    const state = get();
+    if (mode === 'cod') {
+      return {
+        paymentMode: 'cod',
+        paymentType: 'paid',
+        paymentMethod: PAYMENT_METHODS.COD,
+        paidAmount: Math.ceil(totalOf(state)),
+        priceMode: state.priceMode,
+        discountPercent: state.discountPercent,
+        markupAmount: state.markupAmount,
+      };
+    }
+    if (mode === 'cashdown') {
+      return {
+        paymentMode: 'cashdown',
+        paymentType: 'credit',
+        paymentMethod: PAYMENT_METHODS.KBZ_PAY,
+        paidAmount: Math.max(Math.ceil(totalOf(state)), state.paidAmount || 0),
+        priceMode: state.priceMode,
+        discountPercent: state.discountPercent,
+        markupAmount: state.markupAmount,
+      };
+    }
     return {
-      paymentType: cod ? 'credit' : 'paid',
-      paymentMethod: cod ? PAYMENT_METHODS.COD : PAYMENT_METHODS.CASH,
-      paidAmount: cod ? 0 : Math.ceil(totalOf(get())),
+      paymentMode: 'foc',
+      paymentType: 'paid',
+      paymentMethod: PAYMENT_METHODS.FOC,
+      paidAmount: 0,
+      priceMode: 'normal',
+      discountPercent: 0,
+      markupAmount: 0,
+    };
+  };
+
+  const paymentFor = (form: PaymentForm): Pick<CartData, 'paymentMode' | 'paymentType' | 'paymentMethod' | 'paidAmount'> => {
+    const fields = modeFields(form === 'cod' ? 'cod' : 'cashdown');
+    return {
+      paymentMode: fields.paymentMode,
+      paymentType: fields.paymentType,
+      paymentMethod: fields.paymentMethod,
+      paidAmount: fields.paidAmount,
     };
   };
 
@@ -216,41 +273,42 @@ export const createCartStore = () => create<CartState>((set, get) => {
     setDiscountPercent: (percent) => update({ discountPercent: Number(percent) || 0 }),
     setMarkupAmount: (amount) => update({ markupAmount: Number(amount) || 0 }),
 
+    selectPaymentMode: (mode) => {
+      const state = get();
+      if (isOrderPaymentFormLocked(state.editingOrder)) return;
+      if (isCashdownKpayModeLocked(state.editingOrder) && mode !== 'cashdown') return;
+      if (mode === 'cod' && state.deliveryRegion && state.deliveryRegion !== YANGON_REGION_CODE) return;
+      update(modeFields(mode));
+    },
     selectPaymentOption: (option) => {
       const state = get();
-      if (isCod(state.paymentMethod) && isOrderPaymentFormLocked(state.editingOrder)) return;
-      if (option === 'paid') {
-        set({
-          paymentType: 'paid',
-          paymentMethod: PAYMENT_METHODS.CASH,
-          paidAmount: Math.ceil(totalOf(state)),
-        });
+      if (isOrderPaymentFormLocked(state.editingOrder)) return;
+      const targetMode = option === 'foc' ? 'foc' : option === 'credit' ? 'cashdown' : 'cod';
+      if (isCashdownKpayModeLocked(state.editingOrder) && targetMode !== 'cashdown') return;
+      if (option === 'foc') {
+        update(modeFields('foc'));
       } else if (option === 'credit') {
-        if (isCod(state.paymentMethod)) return;
-        set({ paymentType: 'credit', paymentMethod: PAYMENT_METHODS.CASH, paidAmount: 0 });
+        update(modeFields('cashdown'));
       } else {
-        set({
-          paymentType: 'paid',
-          paymentMethod: PAYMENT_METHODS.FOC,
-          paidAmount: 0,
-          priceMode: 'normal',
-          discountPercent: 0,
-          markupAmount: 0,
-        });
+        update(modeFields('cod'));
       }
     },
     selectPaymentForm: (form) => {
       const state = get();
-      if (isOrderPaymentFormLocked(state.editingOrder) || isFoc(state.paymentMethod) ||
-          isCod(state.paymentMethod) === (form === 'cod')) return;
+      if (isOrderPaymentFormLocked(state.editingOrder)) return;
+      if (isCashdownKpayModeLocked(state.editingOrder) && form !== 'cash_down') return;
+      if (form === 'cod' && state.deliveryRegion && state.deliveryRegion !== YANGON_REGION_CODE) return;
       update(paymentFor(form));
     },
     setPaymentMethod: (paymentMethod) => {
-      if (hasNoUpfrontPayment(get().paymentMethod) || hasNoUpfrontPayment(paymentMethod)) return;
+      const state = get();
+      if (state.paymentMode === 'cashdown' && paymentMethod !== PAYMENT_METHODS.KBZ_PAY) return;
+      if (hasNoUpfrontPayment(state.paymentMethod) || hasNoUpfrontPayment(paymentMethod)) return;
       update({ paymentMethod });
     },
     setPaidAmount: (amount) => {
-      if (hasNoUpfrontPayment(get().paymentMethod)) return;
+      const state = get();
+      if (state.paymentMode === 'cod' || state.paymentMode === 'foc' || hasNoUpfrontPayment(state.paymentMethod)) return;
       const value = Number(amount);
       set({ paidAmount: Number.isFinite(value) && value > 0 ? Math.ceil(value) : 0 });
     },
@@ -259,24 +317,37 @@ export const createCartStore = () => create<CartState>((set, get) => {
       // Keep a manual override or the saved order's destination when the same customer is reselected.
       const state = get();
       if (creditPersonId === state.creditPersonId) return;
-      const cod = isCod(state.paymentMethod);
       const customerDetails = {
         creditPersonId,
         deliveryRegion: customer?.region || '',
-        deliveryTownship: customer?.region ? customer.township || '' : '',
+        deliveryTownship: customer?.region === YANGON_REGION_CODE ? customer?.township || '' : '',
       };
-      if (!state.editingOrder && !isFoc(state.paymentMethod) && (state.paymentType === 'paid' || cod)) {
-        const isYangon = customer?.region === YANGON_REGION_CODE;
-        if (isYangon !== cod) {
-          update({ ...customerDetails, ...paymentFor(isYangon ? 'cod' : 'cash_down') });
+      if (!state.editingOrder) {
+        if (!customer) {
+          update({ ...customerDetails, paymentMode: null, paidAmount: 0 });
           return;
         }
+        if (customer.region === YANGON_REGION_CODE) {
+          update({ ...customerDetails, ...modeFields('cod') });
+          return;
+        }
+        if (customer.region) {
+          update({ ...customerDetails, ...modeFields('cashdown') });
+          return;
+        }
+        // Empty customer region: allow both COD and Cashdown without silently defaulting
+        update({ ...customerDetails, paymentMode: null, paidAmount: 0 });
+        return;
       }
       set(customerDetails);
     },
     setDeliveryRegion: (deliveryRegion) => {
-      if (deliveryRegion !== get().deliveryRegion) set({ deliveryRegion, deliveryTownship: '' });
+      if (deliveryRegion !== get().deliveryRegion) {
+        // Decision 1: never auto-switch paymentMode when region changes outside Yangon; user must switch manually.
+        set({ deliveryRegion, deliveryTownship: '' });
+      }
     },
+    setDeliveryTownship: (deliveryTownship) => set({ deliveryTownship }),
     setDeliveryFee: (deliveryFee) => {
       if (Number.isFinite(deliveryFee) && deliveryFee >= 0) update({ deliveryFee });
     },
@@ -289,6 +360,7 @@ export const createCartStore = () => create<CartState>((set, get) => {
       set({
         isCheckoutOpen: true,
         paidAmount: getInitialPaidAmount({
+          paymentMode: state.paymentMode,
           paymentType: state.paymentType,
           paymentMethod: state.paymentMethod,
           paidAmount: state.paidAmount,
@@ -301,15 +373,16 @@ export const createCartStore = () => create<CartState>((set, get) => {
     // The order was saved: remember it and start a fresh cart
     completeSale: (order, customer) => {
       const state = get();
+      const totals = computeTotals(state);
+      const mode = state.paymentMode ?? resolvePaymentMode(state) ?? 'cod';
       const sale: CompletedSale = {
         order,
         items: state.items,
-        totals: computeTotals(state),
-        paymentType: state.paymentType,
+        totals,
+        paymentMode: mode,
+        paymentType: mode === 'cashdown' ? 'credit' : 'paid',
         paymentMethod: state.paymentMethod,
-        paidAmount: isCod(state.paymentMethod)
-          ? state.paidAmount
-          : getFinalPaidAmount(state.paymentMethod, state.paidAmount),
+        paidAmount: getFinalPaidAmount(state.paymentMethod, state.paidAmount, totals.total, mode),
         customer,
         note: state.note,
         orderDate: state.orderDate,

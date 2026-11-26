@@ -17,10 +17,11 @@ const totals = computeTotals({ items, priceMode: 'normal', discountPercent: 0, m
 const input = (overrides: Partial<CheckoutInput> = {}): CheckoutInput => ({
   items,
   totals,
+  paymentMode: 'cod',
   paymentType: 'paid',
-  paymentMethod: PAYMENT_METHODS.CASH,
+  paymentMethod: PAYMENT_METHODS.COD,
   paidAmount: 3000,
-  creditPersonId: '',
+  creditPersonId: 'cp1',
   deliveryRegion: '',
   deliveryTownship: '',
   note: '',
@@ -33,54 +34,77 @@ describe('validateCheckout', () => {
     expect(validateCheckout(input({ items: [] }))).toBe('EMPTY_CART');
   });
 
-  it('paid orders must be paid in full', () => {
-    expect(validateCheckout(input({ paidAmount: 2999 }))).toBe('PAID_LESS_THAN_TOTAL');
-    expect(validateCheckout(input({ paidAmount: 3000 }))).toBeNull();
-    expect(validateCheckout(input({ paidAmount: 5000 }))).toBeNull();
+  it('requires a customer before saving any regular order', () => {
+    expect(validateCheckout(input({ creditPersonId: '' }))).toBe('CUSTOMER_REQUIRED');
+    expect(validateCheckout(input({ creditPersonId: '  ' }))).toBe('CUSTOMER_REQUIRED');
   });
 
-  it('FOC needs no payment', () => {
-    expect(validateCheckout(input({ paymentMethod: PAYMENT_METHODS.FOC, paidAmount: 0 }))).toBeNull();
-  });
-
-  it('credit orders need a customer', () => {
-    expect(validateCheckout(input({ paymentType: 'credit', paidAmount: 0 }))).toBe('CUSTOMER_REQUIRED');
-    expect(validateCheckout(input({ paymentType: 'credit', paidAmount: 0, creditPersonId: '  ' }))).toBe(
-      'CUSTOMER_REQUIRED',
+  it('requires selecting a payment mode when none is picked', () => {
+    expect(validateCheckout(input({ paymentMode: null, paymentMethod: PAYMENT_METHODS.CASH, paymentType: 'paid' }))).toBe(
+      'PAYMENT_MODE_REQUIRED',
     );
   });
 
-  it('credit orders may be part paid but not overpaid', () => {
-    const credit = { paymentType: 'credit' as const, creditPersonId: 'cp1' };
-    expect(validateCheckout(input({ ...credit, paidAmount: 0 }))).toBeNull();
-    expect(validateCheckout(input({ ...credit, paidAmount: 1500 }))).toBeNull();
-    expect(validateCheckout(input({ ...credit, paidAmount: 3000 }))).toBeNull();
-    expect(validateCheckout(input({ ...credit, paidAmount: 3001 }))).toBe('CREDIT_PAID_EXCEEDS_TOTAL');
+  it('allows COD in Yangon or unspecified region and rejects COD outside Yangon', () => {
+    expect(validateCheckout(input({ paymentMode: 'cod', deliveryRegion: '' }))).toBeNull();
+    expect(validateCheckout(input({ paymentMode: 'cod', deliveryRegion: 'yangon' }))).toBeNull();
+    expect(validateCheckout(input({ paymentMode: 'cod', deliveryRegion: 'mandalay' }))).toBe('COD_REGION_INVALID');
+  });
+
+  it('Cashdown requires full payment including delivery fee', () => {
+    const cashdown = {
+      paymentMode: 'cashdown' as const,
+      paymentType: 'credit' as const,
+      paymentMethod: PAYMENT_METHODS.KBZ_PAY,
+      deliveryRegion: 'mandalay',
+    };
+    expect(validateCheckout(input({ ...cashdown, paidAmount: 2999 }))).toBe('CASHDOWN_FULL_PAYMENT_REQUIRED');
+    expect(validateCheckout(input({ ...cashdown, paidAmount: 3000 }))).toBeNull();
+    expect(validateCheckout(input({ ...cashdown, paidAmount: 3500 }))).toBeNull();
+  });
+
+  it('FOC needs a customer and zero payment', () => {
+    expect(validateCheckout(input({ paymentMode: 'foc', paymentMethod: PAYMENT_METHODS.FOC, paidAmount: 0 }))).toBeNull();
   });
 
   it('reports the first problem first', () => {
-    expect(validateCheckout(input({ items: [], paymentType: 'credit' }))).toBe('EMPTY_CART');
+    expect(validateCheckout(input({ items: [], creditPersonId: '' }))).toBe('EMPTY_CART');
   });
 });
 
 describe('paid amounts', () => {
-  it('FOC records nothing as paid', () => {
-    expect(getFinalPaidAmount(PAYMENT_METHODS.FOC, 3000)).toBe(0);
-    expect(getFinalPaidAmount(PAYMENT_METHODS.CASH, 3000)).toBe(3000);
+  it('computes final paid amount by mode: COD full total (Option B), FOC 0, Cashdown paidAmount', () => {
+    expect(getFinalPaidAmount(PAYMENT_METHODS.FOC, 3000, 3000, 'foc')).toBe(0);
+    expect(getFinalPaidAmount(PAYMENT_METHODS.COD, 0, 3500, 'cod')).toBe(3500);
+    expect(getFinalPaidAmount(PAYMENT_METHODS.KBZ_PAY, 3500, 3500, 'cashdown')).toBe(3500);
   });
 
   it('prefills the checkout screen', () => {
-    const base = { paymentType: 'paid' as const, paymentMethod: PAYMENT_METHODS.CASH, paidAmount: 0 };
-    expect(getInitialPaidAmount({ ...base, total: 2699.4 })).toBe(2700);
-    expect(getInitialPaidAmount({ ...base, paymentMethod: PAYMENT_METHODS.FOC, total: 3000 })).toBe(0);
-    expect(getInitialPaidAmount({ ...base, paymentType: 'credit', paidAmount: 1200, total: 3000 })).toBe(1200);
-    expect(getInitialPaidAmount({ ...base, paymentType: 'credit', total: 3000 })).toBe(0);
+    expect(
+      getInitialPaidAmount({ paymentMode: 'cod', paymentType: 'paid', paymentMethod: PAYMENT_METHODS.COD, paidAmount: 0, total: 2699.4 }),
+    ).toBe(2700);
+    expect(
+      getInitialPaidAmount({ paymentMode: 'foc', paymentType: 'paid', paymentMethod: PAYMENT_METHODS.FOC, paidAmount: 3000, total: 3000 }),
+    ).toBe(0);
+    expect(
+      getInitialPaidAmount({ paymentMode: 'cashdown', paymentType: 'credit', paymentMethod: PAYMENT_METHODS.KBZ_PAY, paidAmount: 0, total: 3000 }),
+    ).toBe(3000);
   });
 });
 
 describe('buildCreateOrderPayload', () => {
-  it('builds the POST /order body', () => {
-    expect(buildCreateOrderPayload(input({ note: 'urgent', paymentMethod: PAYMENT_METHODS.KBZ_PAY }))).toEqual({
+  it('builds the POST /order body for Cashdown (KPay + credit category)', () => {
+    expect(
+      buildCreateOrderPayload(
+        input({
+          note: 'urgent',
+          paymentMode: 'cashdown',
+          paymentType: 'credit',
+          paymentMethod: PAYMENT_METHODS.KBZ_PAY,
+          paidAmount: 3000,
+        }),
+      ),
+    ).toEqual({
       ordersProducts: [{ inventoryId: 'inv1', quantity: 3 }],
       subTotal: 3000,
       discount: 0,
@@ -89,18 +113,23 @@ describe('buildCreateOrderPayload', () => {
       deliveryTownship: null,
       deliveryFee: 0,
       paidAmount: 3000,
-      paymentType: 'paid',
+      paymentMode: 'cashdown',
+      paymentType: 'credit',
       note: 'urgent',
       paymentMethod: 'kpay',
       orderDate: '2026-10-23T00:00:00.000Z',
+      creditPersonId: 'cp1',
     });
   });
 
-  it('includes the customer only when one is chosen', () => {
-    expect(buildCreateOrderPayload(input())).not.toHaveProperty('creditPersonId');
-    expect(
-      buildCreateOrderPayload(input({ paymentType: 'credit', creditPersonId: 'cp1', paidAmount: 0 })),
-    ).toMatchObject({ paymentType: 'credit', creditPersonId: 'cp1', paidAmount: 0 });
+  it('builds the POST /order body for COD (Option B paid + full amount)', () => {
+    expect(buildCreateOrderPayload(input({ paymentMode: 'cod', paidAmount: 0 }))).toMatchObject({
+      paymentMode: 'cod',
+      paymentType: 'paid',
+      paymentMethod: 'cod',
+      paidAmount: 3000,
+      creditPersonId: 'cp1',
+    });
   });
 
   it('sends discounts as an amount', () => {
@@ -109,10 +138,11 @@ describe('buildCreateOrderPayload', () => {
       subTotal: 3000,
       discount: 300,
       finalAmount: 2700,
+      paidAmount: 2700,
     });
   });
 
-  it('sends the region and delivery fee independently of the merchandise price', () => {
+  it('sends the region, Yangon township, and delivery fee independently of merchandise price', () => {
     const totalsWithDelivery = computeTotals({
       items,
       priceMode: 'discount',
@@ -120,10 +150,18 @@ describe('buildCreateOrderPayload', () => {
       markupAmount: 0,
       deliveryFee: 500,
     });
-    const checkout = input({ totals: totalsWithDelivery, paidAmount: 3200, deliveryRegion: 'mandalay' });
+    const checkout = input({
+      totals: totalsWithDelivery,
+      paymentMode: 'cashdown',
+      paymentMethod: PAYMENT_METHODS.KBZ_PAY,
+      paymentType: 'credit',
+      paidAmount: 3200,
+      deliveryRegion: 'mandalay',
+      deliveryTownship: 'ygn-hlaing',
+    });
 
     expect(validateCheckout(checkout)).toBeNull();
-    expect(validateCheckout({ ...checkout, paidAmount: 2700 })).toBe('PAID_LESS_THAN_TOTAL');
+    expect(validateCheckout({ ...checkout, paidAmount: 2700 })).toBe('CASHDOWN_FULL_PAYMENT_REQUIRED');
     expect(buildCreateOrderPayload(checkout)).toMatchObject({
       subTotal: 3000,
       discount: 300,
@@ -131,13 +169,14 @@ describe('buildCreateOrderPayload', () => {
       deliveryTownship: null,
       deliveryFee: 500,
       finalAmount: 3200,
+      paidAmount: 3200,
     });
   });
 
   it('FOC sends a paid amount of 0', () => {
     expect(
-      buildCreateOrderPayload(input({ paymentMethod: PAYMENT_METHODS.FOC, paidAmount: 3000 })),
-    ).toMatchObject({ paidAmount: 0, paymentMethod: 'foc' });
+      buildCreateOrderPayload(input({ paymentMode: 'foc', paymentMethod: PAYMENT_METHODS.FOC, paidAmount: 3000 })),
+    ).toMatchObject({ paidAmount: 0, paymentMethod: 'foc', paymentMode: 'foc', paymentType: 'paid' });
   });
 });
 
@@ -167,16 +206,4 @@ describe('payment methods', () => {
     expect(fromApiPaymentMethod('bitcoin')).toBe(PAYMENT_METHODS.CASH);
     expect(fromApiPaymentMethod(undefined)).toBe(PAYMENT_METHODS.CASH);
   });
-});
-
-it('saves COD as credit with zero paid and keeps the checkout total', () => {
-  const cod = input({ paymentMethod: PAYMENT_METHODS.COD, paymentType: 'credit', paidAmount: 0, creditPersonId: '' });
-  expect(validateCheckout(cod)).toBeNull();
-  expect(buildCreateOrderPayload({ ...cod, paidAmount: cod.totals.total })).toMatchObject({
-    paymentMethod: 'cod',
-    paymentType: 'credit',
-    paidAmount: 0,
-    finalAmount: cod.totals.total,
-  });
-  expect(fromApiPaymentMethod('cod')).toBe(PAYMENT_METHODS.COD);
 });

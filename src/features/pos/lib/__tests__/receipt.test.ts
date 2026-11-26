@@ -97,7 +97,7 @@ describe('toReceiptData', () => {
       }),
     );
     expect(receipt).toMatchObject({
-      paymentType: 'အကြွေး',
+      paymentType: 'Cashdown (KBZPay)',
       customerName: 'U Ba',
       customerPhone: '09',
       customerAddress: 'Hlaing',
@@ -241,7 +241,7 @@ describe('fromWebVoucher', () => {
     expect(fromWebVoucher(voucher, { paymentType: 'credit', paymentMethod: 'kpay' })).toMatchObject({
       invoiceNo: 'INV/2026/0077',
       date: '24/10/2026 15:30',
-      paymentType: 'အကြွေး',
+      paymentType: 'Cashdown (KBZPay)',
       items: [{ name: 'Brake Pad', code: 'BP-1', quantity: 2, price: 1500, subTotal: 3000 }],
       discount: 300,
       discountPercent: 10,

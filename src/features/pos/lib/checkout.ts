@@ -1,18 +1,24 @@
-import type { CreateOrderRequest } from '../../../services/pos/types';
+import type { ApiPaymentMode, CreateOrderRequest } from '../../../services/pos/types';
+import { YANGON_REGION_CODE } from '../../preOrder/lib/preOrder';
 import type { CartItem, Totals } from './pricing';
 import { isCod, PAYMENT_METHODS, PaymentMethod, toApiPaymentMethod } from './paymentMethods';
 
 export type PaymentType = 'paid' | 'credit';
+export type PaymentMode = ApiPaymentMode;
 
 export type CheckoutError =
   | 'EMPTY_CART'
   | 'PAID_LESS_THAN_TOTAL'
   | 'CUSTOMER_REQUIRED'
+  | 'PAYMENT_MODE_REQUIRED'
+  | 'COD_REGION_INVALID'
+  | 'CASHDOWN_FULL_PAYMENT_REQUIRED'
   | 'CREDIT_PAID_EXCEEDS_TOTAL';
 
 export interface CheckoutInput {
   items: CartItem[];
   totals: Totals;
+  paymentMode?: PaymentMode | null;
   paymentType: PaymentType;
   paymentMethod: PaymentMethod;
   paidAmount: number;
@@ -26,55 +32,87 @@ export interface CheckoutInput {
 
 export const isFoc = (paymentMethod: PaymentMethod) => paymentMethod === PAYMENT_METHODS.FOC;
 
+export const resolvePaymentMode = ({
+  paymentMode,
+}: {
+  paymentMode?: PaymentMode | string | null;
+  paymentMethod?: PaymentMethod | string;
+  paymentType?: PaymentType;
+}): PaymentMode | null => {
+  const rawMode = typeof paymentMode === 'string' ? paymentMode.trim().toLowerCase() : null;
+  if (rawMode === 'cod' || rawMode === 'cashdown' || rawMode === 'foc') return rawMode;
+  return null;
+};
+
 export const hasNoUpfrontPayment = (method: PaymentMethod) => isFoc(method) || isCod(method);
 
-export const getFinalPaidAmount = (paymentMethod: PaymentMethod, paidAmount: number) =>
-  hasNoUpfrontPayment(paymentMethod) ? 0 : paidAmount;
+export const getFinalPaidAmount = (
+  paymentMethod: PaymentMethod,
+  paidAmount: number,
+  total = 0,
+  paymentMode?: PaymentMode | null,
+) => {
+  const mode = resolvePaymentMode({ paymentMode, paymentMethod });
+  if (mode === 'foc' || isFoc(paymentMethod)) return 0;
+  if (mode === 'cod' || isCod(paymentMethod)) return Math.ceil(total);
+  return paidAmount;
+};
 
 // Paid amount to prefill when the checkout screen opens
 export const getInitialPaidAmount = ({
+  paymentMode,
   paymentType,
   paymentMethod,
   paidAmount,
   total,
 }: {
+  paymentMode?: PaymentMode | null;
   paymentType: PaymentType;
   paymentMethod: PaymentMethod;
   paidAmount: number;
   total: number;
 }) => {
-  if (isFoc(paymentMethod)) return 0;
-  if (isCod(paymentMethod) || paymentType === 'credit') return paidAmount || 0;
-  return Math.ceil(total);
+  const mode = resolvePaymentMode({ paymentMode, paymentMethod, paymentType });
+  if (mode === 'foc' || isFoc(paymentMethod)) return 0;
+  if (mode === 'cod' || isCod(paymentMethod)) return Math.ceil(total);
+  return Math.max(Math.ceil(total), paidAmount || 0);
 };
 
-// Checks in the same order as the web POS, so the first problem shown is the same
+// Checks customer-first, payment mode, region compatibility, and full Cashdown payment
 export const validateCheckout = ({
   items,
   totals,
+  paymentMode,
   paymentType,
   paymentMethod,
   paidAmount,
   creditPersonId,
+  deliveryRegion,
 }: CheckoutInput): CheckoutError | null => {
   if (items.length === 0) return 'EMPTY_CART';
+  if (!creditPersonId || creditPersonId.trim() === '') return 'CUSTOMER_REQUIRED';
 
-  if (paymentType === 'paid' && !hasNoUpfrontPayment(paymentMethod) && paidAmount < totals.total) {
-    return 'PAID_LESS_THAN_TOTAL';
+  const mode = resolvePaymentMode({ paymentMode, paymentMethod, paymentType });
+  if (!mode) return 'PAYMENT_MODE_REQUIRED';
+
+  if (mode === 'cod' && deliveryRegion && deliveryRegion !== YANGON_REGION_CODE) {
+    return 'COD_REGION_INVALID';
   }
 
-  if (paymentType === 'credit' && !isCod(paymentMethod)) {
-    if (!creditPersonId || creditPersonId.trim() === '') return 'CUSTOMER_REQUIRED';
-    if (paidAmount > totals.total) return 'CREDIT_PAID_EXCEEDS_TOTAL';
+  if (mode === 'cashdown') {
+    if (paidAmount < totals.total) return 'CASHDOWN_FULL_PAYMENT_REQUIRED';
   }
-
-  if (isCod(paymentMethod) && paidAmount > totals.total) return 'CREDIT_PAID_EXCEEDS_TOTAL';
 
   return null;
 };
 
 export const buildCreateOrderPayload = (input: CheckoutInput): CreateOrderRequest => {
-  const { items, totals, paymentType, paymentMethod, paidAmount, creditPersonId, note, orderDate } = input;
+  const { items, totals, paymentMode, paymentType, paymentMethod, paidAmount, creditPersonId, note, orderDate } =
+    input;
+  const mode = resolvePaymentMode({ paymentMode, paymentMethod, paymentType }) ?? 'cod';
+  const apiPaymentType: PaymentType = mode === 'cashdown' ? 'credit' : 'paid';
+  const resolvedMethod =
+    mode === 'cod' ? PAYMENT_METHODS.COD : mode === 'foc' ? PAYMENT_METHODS.FOC : PAYMENT_METHODS.KBZ_PAY;
   return {
     ordersProducts: items.map((item) => ({
       inventoryId: item.product._id,
@@ -84,12 +122,13 @@ export const buildCreateOrderPayload = (input: CheckoutInput): CreateOrderReques
     discount: totals.discountAmount,
     finalAmount: totals.total,
     deliveryRegion: input.deliveryRegion || null,
-    deliveryTownship: input.deliveryTownship || null,
+    deliveryTownship: input.deliveryRegion === YANGON_REGION_CODE ? input.deliveryTownship || null : null,
     deliveryFee: totals.deliveryFee,
-    paidAmount: getFinalPaidAmount(paymentMethod, paidAmount),
-    paymentType: isCod(paymentMethod) ? 'credit' : paymentType,
+    paidAmount: getFinalPaidAmount(resolvedMethod, paidAmount, totals.total, mode),
+    paymentMode: mode,
+    paymentType: apiPaymentType,
     note,
-    paymentMethod: toApiPaymentMethod(paymentMethod),
+    paymentMethod: toApiPaymentMethod(resolvedMethod),
     // Midnight UTC of the picked day, the same value the web POS sends
     orderDate: new Date(orderDate).toISOString(),
     ...(creditPersonId ? { creditPersonId } : {}),

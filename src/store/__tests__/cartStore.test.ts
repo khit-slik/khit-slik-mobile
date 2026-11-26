@@ -65,39 +65,47 @@ describe('checkout delivery', () => {
     expect(store()).toMatchObject({ deliveryRegion: '', deliveryTownship: '', deliveryFee: 500 });
   });
 
-  it('defaults a new Yangon customer to COD credit and keeps a Paid override', () => {
+  it('defaults a new Yangon customer to COD (Option B), non-Yangon to Cashdown, and keeps empty-region unselected', () => {
     fillCart();
     store().openCheckout();
-    const customer = { _id: 'yangon-customer', region: 'yangon' };
+    const customer = { _id: 'yangon-customer', region: 'yangon', township: 'ygn-hlaing' };
     store().setCustomer(customer);
     store().setDeliveryFee(500);
-    expect(store()).toMatchObject({ paymentMethod: PAYMENT_METHODS.COD, paymentType: 'credit', paidAmount: 0 });
+    expect(store()).toMatchObject({
+      paymentMode: 'cod',
+      paymentMethod: PAYMENT_METHODS.COD,
+      paymentType: 'paid',
+      paidAmount: 3500,
+      deliveryTownship: 'ygn-hlaing',
+    });
 
-    store().setPaymentMethod(PAYMENT_METHODS.KBZ_PAY);
-    expect(store().paymentMethod).toBe(PAYMENT_METHODS.COD);
-    store().selectPaymentOption('paid');
-    expect(store()).toMatchObject({ paymentMethod: PAYMENT_METHODS.CASH, paymentType: 'paid', paidAmount: 3500 });
+    store().selectPaymentMode('cashdown');
+    expect(store()).toMatchObject({ paymentMode: 'cashdown', paymentMethod: PAYMENT_METHODS.KBZ_PAY, paymentType: 'credit', paidAmount: 3500 });
 
-    store().setPaymentMethod(PAYMENT_METHODS.KBZ_PAY);
-    store().setCustomer(customer);
-    expect(store()).toMatchObject({ paymentMethod: PAYMENT_METHODS.KBZ_PAY, paidAmount: 3500 });
-
-    store().setCustomer({ _id: 'another-yangon-customer', region: 'yangon' });
-    expect(store()).toMatchObject({ paymentMethod: PAYMENT_METHODS.COD, paidAmount: 0 });
     store().setCustomer({ _id: 'mandalay-customer', region: 'mandalay' });
-    expect(store()).toMatchObject({ paymentMethod: PAYMENT_METHODS.CASH, paymentType: 'paid', paidAmount: 3500 });
-    store().selectPaymentForm('cod');
-    expect(store()).toMatchObject({ paymentMethod: PAYMENT_METHODS.COD, paymentType: 'credit', paidAmount: 0 });
+    expect(store()).toMatchObject({ paymentMode: 'cashdown', paymentMethod: PAYMENT_METHODS.KBZ_PAY, paymentType: 'credit', paidAmount: 3500 });
+
+    // Empty-region customer does not assume Yangon or Mandalay
+    store().setCustomer({ _id: 'empty-customer', region: '' });
+    expect(store().paymentMode).toBeNull();
+
+    // Selecting COD on empty region then switching region to Mandalay does not auto-switch mode
+    store().selectPaymentMode('cod');
+    expect(store().paymentMode).toBe('cod');
+    store().setDeliveryRegion('mandalay');
+    expect(store().paymentMode).toBe('cod');
+    // User manually switches to Cashdown
+    store().selectPaymentMode('cashdown');
+    expect(store().paymentMode).toBe('cashdown');
   });
 
-  it('retains a credit or FOC selection when a Yangon customer is selected', () => {
-    for (const option of ['credit', 'foc'] as const) {
-      store().reset();
-      store().selectPaymentOption(option);
-      store().setCustomer({ _id: 'yangon-customer', region: 'yangon' });
-      expect(store().paymentMethod).toBe(option === 'credit' ? PAYMENT_METHODS.CASH : PAYMENT_METHODS.FOC);
-      expect(store().paidAmount).toBe(0);
-    }
+  it('supports Cashdown and FOC selection cleanly', () => {
+    store().reset();
+    fillCart();
+    store().selectPaymentMode('cashdown');
+    expect(store()).toMatchObject({ paymentMode: 'cashdown', paymentMethod: PAYMENT_METHODS.KBZ_PAY, paymentType: 'credit' });
+    store().selectPaymentMode('foc');
+    expect(store()).toMatchObject({ paymentMode: 'foc', paymentMethod: PAYMENT_METHODS.FOC, paymentType: 'paid', paidAmount: 0 });
   });
 
   it('keeps a manual region when the same customer is reselected', () => {
@@ -110,8 +118,10 @@ describe('checkout delivery', () => {
 
   it('updates the paid total and resets delivery after a new sale', () => {
     fillCart();
+    store().setCustomer({ _id: 'cp1', region: 'yangon', township: 'ygn-hlaing' });
     store().openCheckout();
     store().setDeliveryRegion('mandalay');
+    store().selectPaymentMode('cashdown');
     store().setDeliveryFee(500);
     expect(store().paidAmount).toBe(3500);
 
@@ -135,38 +145,33 @@ describe('price mode', () => {
 });
 
 describe('paid amount', () => {
-  it('opening checkout prefills the total', () => {
+  it('opening checkout prefills the total for COD and Cashdown', () => {
     fillCart();
+    store().selectPaymentMode('cod');
     store().openCheckout();
     expect(store().paidAmount).toBe(3000);
   });
 
-  it('follows the total while checkout is open', () => {
+  it('follows the total while checkout is open for COD and Cashdown', () => {
     fillCart();
+    store().selectPaymentMode('cod');
     store().openCheckout();
     store().setPriceMode('discount');
     store().setDiscountPercent(10);
     expect(store().paidAmount).toBe(2700);
   });
 
-  it('does not change while checkout is closed', () => {
+  it('keeps Cashdown paidAmount >= total when opening checkout', () => {
     fillCart();
-    store().setPaidAmount(1000);
-    store().setPriceMode('discount');
-    store().setDiscountPercent(10);
-    expect(store().paidAmount).toBe(1000);
-  });
-
-  it('a typed amount is reset to the total when the method changes, as on the web POS', () => {
-    fillCart();
+    store().selectPaymentMode('cashdown');
     store().openCheckout();
-    store().setPaidAmount(5000);
-    expect(store().paidAmount).toBe(5000);
-    store().setPaymentMethod(PAYMENT_METHODS.KBZ_PAY);
     expect(store().paidAmount).toBe(3000);
+    store().setPaidAmount(3500);
+    expect(store().paidAmount).toBe(3500);
   });
 
   it('rounds up and never goes negative', () => {
+    store().selectPaymentMode('cashdown');
     store().setPaidAmount(1200.2);
     expect(store().paidAmount).toBe(1201);
     store().setPaidAmount(-5);
@@ -175,16 +180,13 @@ describe('paid amount', () => {
 });
 
 describe('payment options', () => {
-  it('credit starts unpaid and keeps a typed amount', () => {
+  it('Cashdown starts full total and uses KBZPay', () => {
     fillCart();
     store().openCheckout();
-    store().selectPaymentOption('credit');
+    store().selectPaymentMode('cashdown');
     expect(store().paymentType).toBe('credit');
-    expect(store().paidAmount).toBe(0);
-    store().setPaidAmount(1500);
-    store().setPriceMode('discount');
-    store().setDiscountPercent(10);
-    expect(store().paidAmount).toBe(1500);
+    expect(store().paymentMethod).toBe(PAYMENT_METHODS.KBZ_PAY);
+    expect(store().paidAmount).toBe(3000);
   });
 
   it('FOC clears pricing and locks method and price mode', () => {
@@ -194,6 +196,7 @@ describe('payment options', () => {
     store().setDiscountPercent(10);
     store().selectPaymentOption('foc');
     expect(store()).toMatchObject({
+      paymentMode: 'foc',
       paymentType: 'paid',
       paymentMethod: PAYMENT_METHODS.FOC,
       paidAmount: 0,
@@ -207,11 +210,11 @@ describe('payment options', () => {
     expect(store().priceMode).toBe('normal');
   });
 
-  it('back to paid from FOC uses cash and the full total', () => {
+  it('back to COD from FOC uses COD and the full total (Option B)', () => {
     fillCart();
     store().selectPaymentOption('foc');
-    store().selectPaymentOption('paid');
-    expect(store().paymentMethod).toBe(PAYMENT_METHODS.CASH);
+    store().selectPaymentMode('cod');
+    expect(store().paymentMethod).toBe(PAYMENT_METHODS.COD);
     expect(store().paidAmount).toBe(3000);
   });
 });
@@ -224,39 +227,49 @@ describe('payment mode when editing an order', () => {
     subTotal: 3000,
     finalAmount: 3500,
     deliveryFee: 500,
-    paymentMethod: 'cash',
+    paymentMode: 'cashdown',
+    paymentMethod: 'kpay',
     paymentType: 'credit',
-    paidAmount: 0,
+    paidAmount: 3500,
   };
 
-  it('switches an unpaid order between COD and Paid without changing the delivery fee', () => {
-    store().startEdit(orderToDraft(savedOrder, new Map([[oil._id, oil]])).draft);
+  it('switches an editable finance_pending regular order between Cashdown and COD and locks once in packing', () => {
+    store().startEdit(orderToDraft({ ...savedOrder, workflowStatus: 'finance_pending' }, new Map([[oil._id, oil]])).draft);
     store().openCheckout();
-    store().selectPaymentForm('cod');
-    expect(store()).toMatchObject({ paymentMethod: PAYMENT_METHODS.COD, paymentType: 'credit', paidAmount: 0, deliveryFee: 500 });
+    store().selectPaymentMode('cod');
+    expect(store()).toMatchObject({ paymentMode: 'cod', paymentMethod: PAYMENT_METHODS.COD, paymentType: 'paid', paidAmount: 3500, deliveryFee: 500 });
 
-    store().setPaymentMethod(PAYMENT_METHODS.KBZ_PAY);
-    expect(store().paymentMethod).toBe(PAYMENT_METHODS.COD);
-    store().selectPaymentOption('paid');
-    store().setPaymentMethod(PAYMENT_METHODS.KBZ_PAY);
-    expect(store()).toMatchObject({ paymentMethod: PAYMENT_METHODS.KBZ_PAY, paymentType: 'paid', paidAmount: 3500 });
+    store().selectPaymentMode('cashdown');
+    expect(store()).toMatchObject({ paymentMode: 'cashdown', paymentMethod: PAYMENT_METHODS.KBZ_PAY, paymentType: 'credit', paidAmount: 3500 });
+
+    // Once in packing, payment mode cannot be changed
+    store().startEdit(orderToDraft({ ...savedOrder, workflowStatus: 'packing' }, new Map([[oil._id, oil]])).draft);
+    store().openCheckout();
+    store().selectPaymentMode('cod');
+    expect(store()).toMatchObject({ paymentMode: 'cashdown', paymentMethod: PAYMENT_METHODS.KBZ_PAY, paymentType: 'credit' });
+
+    // Even at finance_pending, existing KPay transactions lock Cashdown mode switching
+    store().startEdit(orderToDraft({ ...savedOrder, workflowStatus: 'finance_pending', hasKpayTransactions: true }, new Map([[oil._id, oil]])).draft);
+    store().openCheckout();
+    store().selectPaymentMode('cod');
+    expect(store()).toMatchObject({ paymentMode: 'cashdown', paymentMethod: PAYMENT_METHODS.KBZ_PAY, paymentType: 'credit' });
   });
 
-  it('keeps collected COD money when opening, updating price and saving the order', () => {
-    const order = { ...savedOrder, paymentMethod: 'COD', paidAmount: 1200 };
+  it('updates COD paidAmount to Option B total when delivery fee is edited', () => {
+    const order = { ...savedOrder, paymentMode: 'cod' as const, paymentMethod: 'cod', paymentType: 'paid' as const, paidAmount: 3500 };
     store().startEdit(orderToDraft(order, new Map([[oil._id, oil]])).draft);
     store().openCheckout();
-    store().selectPaymentOption('paid');
     store().setDeliveryFee(800);
 
-    expect(store()).toMatchObject({ paymentMethod: PAYMENT_METHODS.COD, paymentType: 'credit', paidAmount: 1200 });
-    expect(store().completeSale(order, null).paidAmount).toBe(1200);
+    expect(store()).toMatchObject({ paymentMode: 'cod', paymentMethod: PAYMENT_METHODS.COD, paymentType: 'paid', paidAmount: 3800 });
+    expect(store().completeSale(order, null).paidAmount).toBe(3800);
   });
 });
 
 describe('completeSale', () => {
   it('keeps a record of the sale and starts a fresh cart', () => {
     fillCart();
+    store().selectPaymentMode('cashdown');
     store().openCheckout();
     store().setPaidAmount(5000);
     const order = { _id: 'o1', orderNumber: 'INV/0001' };
@@ -266,8 +279,9 @@ describe('completeSale', () => {
 
     expect(sale).toMatchObject({
       order,
-      paymentType: 'paid',
-      paymentMethod: PAYMENT_METHODS.CASH,
+      paymentMode: 'cashdown',
+      paymentType: 'credit',
+      paymentMethod: PAYMENT_METHODS.KBZ_PAY,
       paidAmount: 5000,
       customer: null,
     });
@@ -298,14 +312,15 @@ describe('reset', () => {
     fillCart();
     store().setNote('note');
     store().setCustomer({ _id: 'cp1' });
-    store().selectPaymentOption('credit');
+    store().selectPaymentMode('cashdown');
     store().reset();
     expect(store()).toMatchObject({
       items: [],
       note: '',
       creditPersonId: '',
+      paymentMode: null,
       paymentType: 'paid',
-      paymentMethod: PAYMENT_METHODS.CASH,
+      paymentMethod: PAYMENT_METHODS.COD,
       paidAmount: 0,
       priceMode: 'normal',
     });

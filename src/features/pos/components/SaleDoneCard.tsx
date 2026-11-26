@@ -60,10 +60,10 @@ interface Props {
 export default function SaleDoneCard({ sale, title, subtitle, receiptAction = 'print', onExit, onViewOrders }: Props) {
   const { order, totals, paymentType, paymentMethod, paidAmount, customer } = sale;
   const invoiceNumber = order.orderNumber || order._id;
-  const foc = isFoc(paymentMethod);
-  const change = paymentType === 'paid' && !foc ? getChangeAmount(paidAmount, totals.total) : 0;
-  const cod = isCod(paymentMethod);
-  const due = paymentType === 'credit' || cod ? Math.max(0, totals.total - paidAmount) : 0;
+  const foc = sale.paymentMode === 'foc' || isFoc(paymentMethod);
+  const cod = sale.paymentMode === 'cod' || isCod(paymentMethod);
+  const change = !foc ? getChangeAmount(paidAmount, totals.total) : 0;
+  const due = !foc ? Math.max(0, totals.total - paidAmount) : 0;
 
   const { width } = useWindowDimensions();
   const isTablet = width >= TABLET_MIN_WIDTH;
