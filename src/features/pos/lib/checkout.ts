@@ -1,10 +1,10 @@
-import type { ApiPaymentMode, CreateOrderRequest } from '../../../services/pos/types';
+import type { CreateOrderRequest } from '../../../services/pos/types';
 import { YANGON_REGION_CODE } from '../../preOrder/lib/preOrder';
 import type { CartItem, Totals } from './pricing';
 import { isCod, PAYMENT_METHODS, PaymentMethod, toApiPaymentMethod } from './paymentMethods';
 
-export type PaymentType = 'paid' | 'credit';
-export type PaymentMode = ApiPaymentMode;
+export type PaymentType = 'paid' | 'credit' | 'foc';
+export type PaymentMode = 'cod' | 'cashdown' | 'foc';
 
 export type CheckoutError =
   | 'EMPTY_CART'
@@ -30,10 +30,28 @@ export interface CheckoutInput {
   orderDate: string;
 }
 
-export const isFoc = (paymentMethod: PaymentMethod) => paymentMethod === PAYMENT_METHODS.FOC;
+export const isFoc = (paymentMethod?: PaymentMethod | string) =>
+  paymentMethod === PAYMENT_METHODS.FOC ||
+  (typeof paymentMethod === 'string' && paymentMethod.trim().toLowerCase() === 'foc');
+
+// Derive regular-order category from stored fields: check FOC first (paymentType or legacy paymentMethod), then paid vs credit.
+export const resolveOrderCategory = ({
+  paymentMethod,
+  paymentType,
+}: {
+  paymentMethod?: PaymentMethod | string;
+  paymentType?: PaymentType | string;
+}): PaymentMode | null => {
+  if (paymentType === 'foc' || isFoc(paymentMethod)) return 'foc';
+  if (paymentType === 'paid') return 'cod';
+  if (paymentType === 'credit') return 'cashdown';
+  return null;
+};
 
 export const resolvePaymentMode = ({
   paymentMode,
+  paymentMethod,
+  paymentType,
 }: {
   paymentMode?: PaymentMode | string | null;
   paymentMethod?: PaymentMethod | string;
@@ -41,7 +59,7 @@ export const resolvePaymentMode = ({
 }): PaymentMode | null => {
   const rawMode = typeof paymentMode === 'string' ? paymentMode.trim().toLowerCase() : null;
   if (rawMode === 'cod' || rawMode === 'cashdown' || rawMode === 'foc') return rawMode;
-  return null;
+  return resolveOrderCategory({ paymentMethod, paymentType });
 };
 
 export const hasNoUpfrontPayment = (method: PaymentMethod) => isFoc(method) || isCod(method);
@@ -92,7 +110,11 @@ export const validateCheckout = ({
   if (items.length === 0) return 'EMPTY_CART';
   if (!creditPersonId || creditPersonId.trim() === '') return 'CUSTOMER_REQUIRED';
 
-  const mode = resolvePaymentMode({ paymentMode, paymentMethod, paymentType });
+  const rawUiMode = typeof paymentMode === 'string' ? paymentMode.trim().toLowerCase() : null;
+  const mode =
+    rawUiMode === 'cod' || rawUiMode === 'cashdown' || rawUiMode === 'foc'
+      ? rawUiMode
+      : null;
   if (!mode) return 'PAYMENT_MODE_REQUIRED';
 
   if (mode === 'cod' && deliveryRegion && deliveryRegion !== YANGON_REGION_CODE) {
@@ -110,7 +132,8 @@ export const buildCreateOrderPayload = (input: CheckoutInput): CreateOrderReques
   const { items, totals, paymentMode, paymentType, paymentMethod, paidAmount, creditPersonId, note, orderDate } =
     input;
   const mode = resolvePaymentMode({ paymentMode, paymentMethod, paymentType }) ?? 'cod';
-  const apiPaymentType: PaymentType = mode === 'cashdown' ? 'credit' : 'paid';
+  const apiPaymentType: PaymentType =
+    mode === 'cashdown' ? 'credit' : mode === 'foc' ? 'foc' : 'paid';
   const resolvedMethod =
     mode === 'cod' ? PAYMENT_METHODS.COD : mode === 'foc' ? PAYMENT_METHODS.FOC : PAYMENT_METHODS.KBZ_PAY;
   return {
@@ -125,7 +148,6 @@ export const buildCreateOrderPayload = (input: CheckoutInput): CreateOrderReques
     deliveryTownship: input.deliveryRegion === YANGON_REGION_CODE ? input.deliveryTownship || null : null,
     deliveryFee: totals.deliveryFee,
     paidAmount: getFinalPaidAmount(resolvedMethod, paidAmount, totals.total, mode),
-    paymentMode: mode,
     paymentType: apiPaymentType,
     note,
     paymentMethod: toApiPaymentMethod(resolvedMethod),

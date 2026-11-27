@@ -42,7 +42,6 @@ export interface CompletedSale {
   order: PosOrder;
   items: CartItem[];
   totals: Totals;
-  paymentMode?: PaymentMode;
   paymentType: PaymentType;
   paymentMethod: PaymentMethod;
   paidAmount: number;
@@ -214,7 +213,7 @@ export const createCartStore = () => create<CartState>((set, get) => {
     }
     return {
       paymentMode: 'foc',
-      paymentType: 'paid',
+      paymentType: 'foc',
       paymentMethod: PAYMENT_METHODS.FOC,
       paidAmount: 0,
       priceMode: 'normal',
@@ -379,8 +378,7 @@ export const createCartStore = () => create<CartState>((set, get) => {
         order,
         items: state.items,
         totals,
-        paymentMode: mode,
-        paymentType: mode === 'cashdown' ? 'credit' : 'paid',
+        paymentType: mode === 'cashdown' ? 'credit' : mode === 'foc' ? 'foc' : 'paid',
         paymentMethod: state.paymentMethod,
         paidAmount: getFinalPaidAmount(state.paymentMethod, state.paidAmount, totals.total, mode),
         customer,

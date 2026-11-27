@@ -60,8 +60,8 @@ interface Props {
 export default function SaleDoneCard({ sale, title, subtitle, receiptAction = 'print', onExit, onViewOrders }: Props) {
   const { order, totals, paymentType, paymentMethod, paidAmount, customer } = sale;
   const invoiceNumber = order.orderNumber || order._id;
-  const foc = sale.paymentMode === 'foc' || isFoc(paymentMethod);
-  const cod = sale.paymentMode === 'cod' || isCod(paymentMethod);
+  const foc = paymentType === 'foc' || isFoc(paymentMethod);
+  const cod = !foc && (paymentType === 'paid' || isCod(paymentMethod));
   const change = !foc ? getChangeAmount(paidAmount, totals.total) : 0;
   const due = !foc ? Math.max(0, totals.total - paidAmount) : 0;
 
@@ -148,10 +148,14 @@ export default function SaleDoneCard({ sale, title, subtitle, receiptAction = 'p
           <View style={styles.details}>
             <Row label="ဘောင်ချာ အမှတ်" value={invoiceNumber} valueStyle={styles.invoice} />
             <View style={styles.divider} />
-            <Row label="စုစုပေါင်း ကျသင့်ငွေ" value={formatMMK(totals.total)} valueStyle={styles.total} />
+            <Row
+              label={foc ? 'ပစ္စည်းတန်ဖိုး စုစုပေါင်း' : 'စုစုပေါင်း ကျသင့်ငွေ'}
+              value={formatMMK(totals.total)}
+              valueStyle={styles.total}
+            />
             <Row label="ပေးချေမှု" value={getPaymentLabel(sale)} />
             {!foc && <Row label="ပေးချေသောငွေ" value={formatMMK(paidAmount)} valueStyle={styles.paid} />}
-            {due > 0 && (
+            {!foc && due > 0 && (
               <Row label={cod ? "COD ကောက်ခံရန်" : "ကျန်ငွေ (အကြွေး)"} value={formatMMK(due)} labelStyle={styles.dueLabel} valueStyle={styles.due} />
             )}
             {change > 0 && <Row label="ပြန်အမ်းငွေ" value={formatMMK(change)} valueStyle={styles.change} />}

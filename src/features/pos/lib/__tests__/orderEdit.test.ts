@@ -35,9 +35,8 @@ const order = (overrides: Partial<PosOrderDetail> = {}): PosOrderDetail => ({
   discount: 0,
   finalAmount: 2500,
   paidAmount: 2500,
-  paymentMode: 'cod',
   paymentType: 'paid',
-  paymentMethod: 'kpay',
+  paymentMethod: 'cod',
   note: 'deliver tomorrow',
   createdAt: '2026-10-20T08:30:00.000Z',
   ...overrides,
@@ -96,15 +95,23 @@ describe('orderToDraft', () => {
     expect(draft.markupAmount).toBe(300);
   });
 
-  it('keeps FOC orders free', () => {
-    const { draft } = orderToDraft(order({ paymentMode: 'foc', paymentMethod: 'foc', paidAmount: 0, discount: 100 }), fresh);
-    expect(draft.paymentMethod).toBe(PAYMENT_METHODS.FOC);
-    expect(draft.priceMode).toBe('normal');
-    expect(draft.paidAmount).toBe(0);
+  it('keeps FOC orders free for both canonical and legacy FOC shapes', () => {
+    const legacy = orderToDraft(order({ paymentType: 'paid', paymentMethod: 'foc', paidAmount: 0, discount: 100 }), fresh);
+    expect(legacy.draft.paymentMode).toBe('foc');
+    expect(legacy.draft.paymentType).toBe('foc');
+    expect(legacy.draft.paymentMethod).toBe(PAYMENT_METHODS.FOC);
+    expect(legacy.draft.priceMode).toBe('normal');
+    expect(legacy.draft.paidAmount).toBe(0);
+
+    const canonical = orderToDraft(order({ paymentType: 'foc', paymentMethod: 'foc', paidAmount: 0 }), fresh);
+    expect(canonical.draft.paymentMode).toBe('foc');
+    expect(canonical.draft.paymentType).toBe('foc');
+    expect(canonical.draft.paymentMethod).toBe(PAYMENT_METHODS.FOC);
+    expect(canonical.draft.paidAmount).toBe(0);
   });
 
   it('takes the credit customer from creditPersonId, or customerId on older orders', () => {
-    const credit = order({ paymentMode: 'cashdown', paymentType: 'credit', paidAmount: 1000, creditPersonId: { _id: 'cp1', name: 'Ko Aung' } });
+    const credit = order({ paymentType: 'credit', paymentMethod: 'kpay', paidAmount: 1000, creditPersonId: { _id: 'cp1', name: 'Ko Aung' } });
     expect(orderToDraft(credit, fresh).draft.creditPersonId).toBe('cp1');
     expect(orderToDraft(credit, fresh).draft.paymentType).toBe('credit');
     expect(getOrderCustomerId(order({ creditPersonId: null, customerId: 'cp2' }))).toBe('cp2');
@@ -191,7 +198,6 @@ describe('buildUpdateOrderPayload', () => {
     expect(
       buildUpdateOrderPayload(input({ paymentMode: 'cod', paymentMethod: PAYMENT_METHODS.COD, paidAmount: 0 })),
     ).toMatchObject({
-      paymentMode: 'cod',
       paymentMethod: 'cod',
       paymentType: 'paid',
       paidAmount: 9000,
@@ -217,28 +223,32 @@ describe('stock changed by the edit', () => {
 });
 
 describe('isOrderEditLocked / isOrderPaymentFormLocked', () => {
-  it('allows Cashdown orders at finance_pending and locks COD/packing/approved/delivered/cancelled', () => {
-    expect(isOrderEditLocked(order({ paymentMode: 'cashdown', workflowStatus: 'finance_pending' }))).toBe(false);
-    expect(isOrderPaymentFormLocked(order({ paymentMode: 'cashdown', workflowStatus: 'finance_pending' }))).toBe(false);
-    expect(isOrderEditLocked(order({ paymentMode: 'cod', workflowStatus: 'packing' }))).toBe(true);
-    expect(isOrderEditLocked(order({ paymentMode: 'cashdown', workflowStatus: 'packing' }))).toBe(true);
-    expect(isOrderEditLocked(order({ paymentMode: 'cashdown', workflowStatus: 'finance_approved' }))).toBe(true);
-    expect(isOrderEditLocked(order({ paymentMode: 'cashdown', workflowStatus: 'delivered' }))).toBe(true);
-    expect(isOrderEditLocked(order({ paymentMode: 'cashdown', workflowStatus: 'finance_pending', orderStatus: 'cancelled' }))).toBe(true);
+  it('allows COD at packing and Cashdown at finance_pending, while locking Cashdown at packing and Ready to Ship/Delivered/Cancelled', () => {
+    expect(isOrderEditLocked(order({ paymentType: 'credit', paymentMethod: 'kpay', workflowStatus: 'finance_pending' }))).toBe(false);
+    expect(isOrderPaymentFormLocked(order({ paymentType: 'credit', paymentMethod: 'kpay', workflowStatus: 'finance_pending' }))).toBe(false);
+    expect(isOrderEditLocked(order({ paymentType: 'paid', paymentMethod: 'cod', workflowStatus: 'packing' }))).toBe(false);
+    expect(isOrderPaymentFormLocked(order({ paymentType: 'paid', paymentMethod: 'cod', workflowStatus: 'packing' }))).toBe(false);
+    expect(isOrderEditLocked(order({ paymentType: 'paid', paymentMethod: 'cod', workflowStatus: 'finance_approved' }))).toBe(true);
+    expect(isOrderEditLocked(order({ paymentType: 'paid', paymentMethod: 'cod', workflowStatus: 'delivered' }))).toBe(true);
+    expect(isOrderEditLocked(order({ paymentType: 'paid', paymentMethod: 'cod', workflowStatus: 'packing', orderStatus: 'cancelled' }))).toBe(true);
+    expect(isOrderEditLocked(order({ paymentType: 'credit', paymentMethod: 'kpay', workflowStatus: 'packing' }))).toBe(true);
+    expect(isOrderEditLocked(order({ paymentType: 'credit', paymentMethod: 'kpay', workflowStatus: 'finance_approved' }))).toBe(true);
+    expect(isOrderEditLocked(order({ paymentType: 'credit', paymentMethod: 'kpay', workflowStatus: 'delivered' }))).toBe(true);
+    expect(isOrderEditLocked(order({ paymentType: 'credit', paymentMethod: 'kpay', workflowStatus: 'finance_pending', orderStatus: 'cancelled' }))).toBe(true);
   });
 
   it('blocks Cashdown mode switching when any KPay record or partial/verified status exists', () => {
     expect(
-      isCashdownKpayModeLocked(order({ paymentMode: 'cashdown', workflowStatus: 'finance_pending', hasKpayTransactions: false, paymentVerificationStatus: 'unverified' })),
+      isCashdownKpayModeLocked(order({ paymentType: 'credit', paymentMethod: 'kpay', workflowStatus: 'finance_pending', hasKpayTransactions: false, paymentVerificationStatus: 'unverified' })),
     ).toBe(false);
     expect(
-      isCashdownKpayModeLocked(order({ paymentMode: 'cashdown', workflowStatus: 'finance_pending', hasKpayTransactions: true, paymentVerificationStatus: 'unverified' })),
+      isCashdownKpayModeLocked(order({ paymentType: 'credit', paymentMethod: 'kpay', workflowStatus: 'finance_pending', hasKpayTransactions: true, paymentVerificationStatus: 'unverified' })),
     ).toBe(true);
     expect(
-      isCashdownKpayModeLocked(order({ paymentMode: 'cashdown', workflowStatus: 'finance_pending', paymentVerificationStatus: 'partial' })),
+      isCashdownKpayModeLocked(order({ paymentType: 'credit', paymentMethod: 'kpay', workflowStatus: 'finance_pending', paymentVerificationStatus: 'partial' })),
     ).toBe(true);
     expect(
-      isCashdownKpayModeLocked(order({ paymentMode: 'cashdown', workflowStatus: 'packing', paymentVerificationStatus: 'verified' })),
+      isCashdownKpayModeLocked(order({ paymentType: 'credit', paymentMethod: 'kpay', workflowStatus: 'packing', paymentVerificationStatus: 'verified' })),
     ).toBe(true);
   });
 });

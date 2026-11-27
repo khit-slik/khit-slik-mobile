@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import type { CreditPersona } from '../../../../services/pos/types';
-import { PaymentOption, useCart, useCartTotals } from '../../../../store/cartStore';
+import { useCart, useCartTotals } from '../../../../store/cartStore';
 import { toast } from '../../../../store/toastStore';
 import { YANGON_REGION_CODE } from '../../../preOrder/lib/preOrder';
 import { useMyanmarLocations } from '../../../preOrder/hooks/useMyanmarLocations';
@@ -128,7 +128,7 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
     items: cart.items,
     totals,
     paymentMode: activeMode,
-    paymentType: cashdown ? 'credit' : 'paid',
+    paymentType: cashdown ? 'credit' : foc ? 'foc' : 'paid',
     paymentMethod: cod ? PAYMENT_METHODS.COD : foc ? PAYMENT_METHODS.FOC : PAYMENT_METHODS.KBZ_PAY,
     paidAmount: cart.paidAmount,
     creditPersonId: cart.creditPersonId,
@@ -520,8 +520,8 @@ function Section({
           {required && <Text style={styles.required}> *</Text>}
           {!!hint && <Text style={styles.hint}> {hint}</Text>}
         </Text>
-        {!!note && <Text style={styles.note}>{note}</Text>}
       </View>
+      {!!note && <Text style={styles.note}>{note}</Text>}
       {children}
     </View>
   );
@@ -621,7 +621,6 @@ const styles = StyleSheet.create({
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: 8,
   },
   sectionLabel: {
@@ -639,6 +638,8 @@ const styles = StyleSheet.create({
     color: colors.textFaint,
   },
   note: {
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
     fontSize: 11,
     color: colors.warning,
     backgroundColor: colors.warningSoft,

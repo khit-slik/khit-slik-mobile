@@ -64,8 +64,6 @@ export interface OrderProductInput {
   quantity: number;
 }
 
-export type ApiPaymentMode = 'cod' | 'cashdown' | 'foc';
-
 export interface CreateOrderRequest {
   storefrontId?: string;
   ordersProducts: OrderProductInput[];
@@ -74,8 +72,7 @@ export interface CreateOrderRequest {
   discount: number;
   finalAmount: number;
   paidAmount: number;
-  paymentMode?: ApiPaymentMode;
-  paymentType: 'paid' | 'credit';
+  paymentType: 'paid' | 'credit' | 'foc';
   paymentMethod: ApiPaymentMethod;
   note?: string;
   orderDate?: string;
@@ -119,8 +116,7 @@ export interface PosOrderDetail extends PosOrder {
   discount?: number;
   finalAmount?: number;
   paidAmount?: number;
-  paymentMode?: ApiPaymentMode | null;
-  paymentType?: 'paid' | 'credit';
+  paymentType?: 'paid' | 'credit' | 'foc';
   paymentMethod?: string;
   orderStatus?: string;
   workflowStatus?: string | null;

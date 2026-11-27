@@ -159,7 +159,9 @@ export default function ReceiptPrintTemplate({ receipt, paperWidth, onLogoSettle
 
       {/* 6. Total, large */}
       <View style={styles.totalRow}>
-        <T style={[styles.totalText, size.totalLabel]}>ကျသင့်ငွေ</T>
+        <T style={[styles.totalText, size.totalLabel]}>
+          {receipt.paymentType === 'အခမဲ့ (FOC)' ? 'ပစ္စည်းတန်ဖိုး' : 'ကျသင့်ငွေ'}
+        </T>
         <T style={[styles.totalText, size.totalAmount]}>{amount(receipt.netTotal)}</T>
       </View>
 

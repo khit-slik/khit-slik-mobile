@@ -51,12 +51,14 @@ export const getSequenceNumber = (orderNumber: string | undefined) => {
   return Number.isFinite(value) && value > 0 ? value : undefined;
 };
 
-export const getPaymentLabel = (sale: Pick<CompletedSale, 'paymentType' | 'paymentMethod'> & { paymentMode?: CompletedSale['paymentMode'] | null }) => {
-  if (sale.paymentMode === 'foc' || isFoc(sale.paymentMethod)) return 'အခမဲ့ (FOC)';
-  if (sale.paymentMode === 'cod' || isCod(sale.paymentMethod)) return 'COD';
-  if (sale.paymentMode === 'cashdown' || sale.paymentType === 'credit') return 'Cashdown (KBZPay)';
-  const method = sale.paymentMethod ?? PAYMENT_METHODS.KBZ_PAY;
-  return SELECTABLE_PAYMENT_METHODS.find((m) => m.id === method)?.label ?? method;
+export const getPaymentLabel = (sale: Pick<CompletedSale, 'paymentType' | 'paymentMethod'>) => {
+  if (sale.paymentType === 'foc' || isFoc(sale.paymentMethod)) return 'အခမဲ့ (FOC)';
+  if (isCod(sale.paymentMethod)) return 'COD';
+  if (sale.paymentType === 'credit') return 'Cashdown (KBZPay)';
+  const method = sale.paymentMethod;
+  if (!method && sale.paymentType === 'paid') return 'COD';
+  const resolved = method ?? PAYMENT_METHODS.KBZ_PAY;
+  return SELECTABLE_PAYMENT_METHODS.find((m) => m.id === resolved)?.label ?? resolved;
 };
 
 export const toReceiptData = (
@@ -90,8 +92,8 @@ export const toReceiptData = (
     serviceCharge: totals.deliveryFee || undefined,
     netTotal: totals.total,
     paidAmount,
-    changeAmount: sale.paymentMode === 'foc' || isFoc(sale.paymentMethod) ? 0 : getChangeAmount(paidAmount, totals.total),
-    dueAmount: sale.paymentMode === 'foc' || isFoc(sale.paymentMethod) ? 0 : Math.max(0, totals.total - paidAmount),
+    changeAmount: sale.paymentType === 'foc' || isFoc(sale.paymentMethod) ? 0 : getChangeAmount(paidAmount, totals.total),
+    dueAmount: sale.paymentType === 'foc' || isFoc(sale.paymentMethod) ? 0 : Math.max(0, totals.total - paidAmount),
     cashierName: cashierName || undefined,
     note: note.trim() || undefined,
     sequenceNumber: getSequenceNumber(order.orderNumber),
@@ -132,8 +134,9 @@ export const fromWebVoucher = (
   }: { paymentType?: PaymentType; paymentMethod?: string; branding?: ReceiptBranding; cashierName?: string } = {},
 ): ReceiptData => {
   const method = fromApiPaymentMethod(paymentMethod);
-  const type: PaymentType = paymentType === 'credit' ? 'credit' : 'paid';
-  const foc = isFoc(method);
+  const type: PaymentType =
+    paymentType === 'credit' ? 'credit' : paymentType === 'foc' ? 'foc' : 'paid';
+  const foc = type === 'foc' || isFoc(method);
   const subtotal = voucher.subtotal || 0;
   const discount = voucher.discountAmount || 0;
   const serviceCharge = voucher.serviceCharge || 0;
@@ -163,7 +166,7 @@ export const fromWebVoucher = (
     netTotal,
     paidAmount,
     changeAmount: type === 'paid' && !foc ? (voucher.change ?? getChangeAmount(paidAmount || 0, netTotal)) : 0,
-    dueAmount: type === 'credit' || isCod(method) ? Math.max(0, netTotal - (paidAmount || 0)) : 0,
+    dueAmount: !foc && (type === 'credit' || isCod(method)) ? Math.max(0, netTotal - (paidAmount || 0)) : 0,
     cashierName: voucher.cashierName || cashierName || undefined,
     note: voucher.note?.trim() || undefined,
     sequenceNumber: getSequenceNumber(voucher.invoiceNumber) ?? voucher.receiptSequenceNumber,

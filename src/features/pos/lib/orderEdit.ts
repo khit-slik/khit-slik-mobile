@@ -7,7 +7,7 @@ import {
   isFoc,
   PaymentMode,
   PaymentType,
-  resolvePaymentMode,
+  resolveOrderCategory,
 } from './checkout';
 import { fromApiPaymentMethod, isCod, PAYMENT_METHODS, PaymentMethod } from './paymentMethods';
 import { CartItem, getSafeQty, getUnitPrice, PriceMode } from './pricing';
@@ -50,16 +50,26 @@ const LOCKED_WORKFLOW_STATUSES = [
   'delivered',
 ];
 
+export const isRegularCodEditableAtPacking = (order: PosOrderDetail | null) =>
+  Boolean(
+    order &&
+      order.isPreOrder !== true &&
+      resolveOrderCategory(order) === 'cod' &&
+      order.workflowStatus === 'packing',
+  );
+
 export const isOrderEditLocked = (order: PosOrderDetail | null) =>
   order !== null &&
   (order.isPreOrder === true ||
     order.orderStatus === 'cancelled' ||
-    (order.workflowStatus != null && LOCKED_WORKFLOW_STATUSES.includes(order.workflowStatus)));
+    (!isRegularCodEditableAtPacking(order) &&
+      order.workflowStatus != null &&
+      LOCKED_WORKFLOW_STATUSES.includes(order.workflowStatus)));
 
 export const isCashdownKpayModeLocked = (order: PosOrderDetail | null) =>
   order !== null &&
   order.isPreOrder !== true &&
-  resolvePaymentMode({ paymentMode: order.paymentMode }) === 'cashdown' &&
+  resolveOrderCategory(order) === 'cashdown' &&
   (order.hasKpayTransactions === true ||
     order.paymentVerificationStatus === 'partial' ||
     order.paymentVerificationStatus === 'verified');
@@ -146,9 +156,7 @@ export const orderToDraft = (
     items.push({ product: toCartProduct(line, qty, freshProducts.get(id)), qty });
   }
 
-  const mode = resolvePaymentMode({
-    paymentMode: order.paymentMode,
-  });
+  const mode = resolveOrderCategory(order);
   const paymentMethod =
     mode === 'cod'
       ? PAYMENT_METHODS.COD
@@ -166,7 +174,7 @@ export const orderToDraft = (
       originalQuantities,
       ...toPricing(order, foc),
       paymentMode: mode,
-      paymentType: mode === 'cashdown' ? 'credit' : 'paid',
+      paymentType: mode === 'cashdown' ? 'credit' : mode === 'foc' ? 'foc' : 'paid',
       paymentMethod,
       paidAmount: foc ? 0 : cod ? Math.ceil(order.finalAmount ?? order.paidAmount ?? 0) : order.paidAmount || 0,
       creditPersonId: getOrderCustomerId(order),

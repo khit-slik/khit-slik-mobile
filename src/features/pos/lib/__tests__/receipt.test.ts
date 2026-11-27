@@ -120,9 +120,10 @@ describe('toReceiptData', () => {
     expect(markedUp).toMatchObject({ markup: 300, netTotal: 5466 });
   });
 
-  it('FOC sales show no payment or change', () => {
-    const receipt = toReceiptData(sale({ paymentMethod: PAYMENT_METHODS.FOC, paidAmount: 0 }));
+  it('FOC sales show no payment or change and zero due even with nonzero item value', () => {
+    const receipt = toReceiptData(sale({ paymentType: 'foc', paymentMethod: PAYMENT_METHODS.FOC, paidAmount: 0 }));
     expect(receipt).toMatchObject({ paymentType: 'အခမဲ့ (FOC)', paidAmount: 0, changeAmount: 0, dueAmount: 0 });
+    expect(receipt.netTotal).toBeGreaterThan(0);
   });
 
   it('prints the note, trimmed, and leaves out an empty one', () => {
@@ -263,7 +264,12 @@ describe('fromWebVoucher', () => {
       changeAmount: 300,
       dueAmount: 0,
     });
-    expect(fromWebVoucher(voucher, { paymentMethod: 'foc' })).toMatchObject({ paymentType: 'အခမဲ့ (FOC)', paidAmount: 0 });
+    expect(fromWebVoucher(voucher, { paymentMethod: 'foc' })).toMatchObject({ paymentType: 'အခမဲ့ (FOC)', paidAmount: 0, dueAmount: 0 });
+    expect(fromWebVoucher(voucher, { paymentType: 'foc', paymentMethod: 'foc' })).toMatchObject({
+      paymentType: 'အခမဲ့ (FOC)',
+      paidAmount: 0,
+      dueAmount: 0,
+    });
   });
 
   it('reads a total above the adjusted subtotal as a markup', () => {

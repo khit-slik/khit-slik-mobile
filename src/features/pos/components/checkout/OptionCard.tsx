@@ -32,7 +32,7 @@ export default function OptionCard({
       <View style={[styles.radio, isActive && styles.radioActive]}>
         {isActive && <View style={styles.radioDot} />}
       </View>
-      <Text style={[styles.label, isActive && styles.labelActive]} numberOfLines={2}>
+      <Text style={[styles.label, isActive && styles.labelActive]}>
         {label}
       </Text>
     </TouchableOpacity>
@@ -42,7 +42,9 @@ export default function OptionCard({
 const styles = StyleSheet.create({
   card: {
     flexGrow: 1,
+    flexShrink: 1,
     flexBasis: '45%',
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
@@ -80,6 +82,7 @@ const styles = StyleSheet.create({
   },
   label: {
     flex: 1,
+    flexShrink: 1,
     fontSize: 14,
     color: colors.textMuted,
   },

@@ -113,7 +113,6 @@ describe('buildCreateOrderPayload', () => {
       deliveryTownship: null,
       deliveryFee: 0,
       paidAmount: 3000,
-      paymentMode: 'cashdown',
       paymentType: 'credit',
       note: 'urgent',
       paymentMethod: 'kpay',
@@ -124,7 +123,6 @@ describe('buildCreateOrderPayload', () => {
 
   it('builds the POST /order body for COD (Option B paid + full amount)', () => {
     expect(buildCreateOrderPayload(input({ paymentMode: 'cod', paidAmount: 0 }))).toMatchObject({
-      paymentMode: 'cod',
       paymentType: 'paid',
       paymentMethod: 'cod',
       paidAmount: 3000,
@@ -173,10 +171,10 @@ describe('buildCreateOrderPayload', () => {
     });
   });
 
-  it('FOC sends a paid amount of 0', () => {
+  it('FOC sends a paid amount of 0 with canonical foc paymentType', () => {
     expect(
       buildCreateOrderPayload(input({ paymentMode: 'foc', paymentMethod: PAYMENT_METHODS.FOC, paidAmount: 3000 })),
-    ).toMatchObject({ paidAmount: 0, paymentMethod: 'foc', paymentMode: 'foc', paymentType: 'paid' });
+    ).toMatchObject({ paidAmount: 0, paymentMethod: 'foc', paymentType: 'foc' });
   });
 });
 

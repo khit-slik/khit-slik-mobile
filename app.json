@@ -16,7 +16,7 @@
         "foregroundImage": "./assets/logo.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.otas.khit-slik-pos",
+      "package": "com.aaog2.khitslikpos",
       "permissions": [
         "android.permission.BLUETOOTH_CONNECT",
         "android.permission.BLUETOOTH_SCAN",
