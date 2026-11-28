@@ -18,6 +18,8 @@ interface PrinterState {
   printMode: PrintMode;
   // Print the receipt as soon as a native POS sale is saved
   autoPrint: boolean;
+  // Show payment method, paid amount, change, and balance due on thermal receipts
+  showPaymentDetails: boolean;
 
   setConnectedPrinter: (printer: BluetoothDevice | null) => void;
   setPairedDevices: (devices: BluetoothDevice[]) => void;
@@ -28,6 +30,7 @@ interface PrinterState {
   setPaperWidth: (width: 58 | 80) => void;
   setPrintMode: (mode: PrintMode) => void;
   setAutoPrint: (enabled: boolean) => void;
+  setShowPaymentDetails: (show: boolean) => void;
 }
 
 export const usePrinterStore = create<PrinterState>((set) => ({
@@ -39,6 +42,7 @@ export const usePrinterStore = create<PrinterState>((set) => ({
   paperWidth: 80,
   printMode: 'image',
   autoPrint: false,
+  showPaymentDetails: true,
 
   setConnectedPrinter: (connectedPrinter) => set({ connectedPrinter }),
   setPairedDevices: (pairedDevices) => set({ pairedDevices }),
@@ -54,4 +58,5 @@ export const usePrinterStore = create<PrinterState>((set) => ({
   setPaperWidth: (paperWidth) => set({ paperWidth }),
   setPrintMode: (printMode) => set({ printMode }),
   setAutoPrint: (autoPrint) => set({ autoPrint }),
+  setShowPaymentDetails: (showPaymentDetails) => set({ showPaymentDetails }),
 }));

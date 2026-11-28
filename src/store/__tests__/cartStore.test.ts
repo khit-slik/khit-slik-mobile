@@ -232,14 +232,13 @@ describe('payment mode when editing an order', () => {
     paidAmount: 3500,
   };
 
-  it('allows COD in packing to switch or edit delivery fee while locking Cashdown in packing and KPay-linked Cashdown', () => {
+  it('blocks Finance-pending Cashdown mode switching while allowing COD in packing to switch or edit delivery fee and locking Cashdown in packing', () => {
     store().startEdit(orderToDraft({ ...savedOrder, workflowStatus: 'finance_pending' }, new Map([[oil._id, oil]])).draft);
     store().openCheckout();
     store().selectPaymentMode('cod');
-    expect(store()).toMatchObject({ paymentMode: 'cod', paymentMethod: PAYMENT_METHODS.COD, paymentType: 'paid', paidAmount: 3500, deliveryFee: 500 });
-
-    store().selectPaymentMode('cashdown');
-    expect(store()).toMatchObject({ paymentMode: 'cashdown', paymentMethod: PAYMENT_METHODS.KBZ_PAY, paymentType: 'credit', paidAmount: 3500 });
+    expect(store()).toMatchObject({ paymentMode: 'cashdown', paymentMethod: PAYMENT_METHODS.KBZ_PAY, paymentType: 'credit', paidAmount: 3500, deliveryFee: 500 });
+    store().selectPaymentMode('foc');
+    expect(store()).toMatchObject({ paymentMode: 'cashdown', paymentMethod: PAYMENT_METHODS.KBZ_PAY, paymentType: 'credit', paidAmount: 3500, deliveryFee: 500 });
 
     // COD at packing can still change mode and delivery fee
     const codAtPacking = { ...savedOrder, paymentMethod: 'cod', paymentType: 'paid' as const, workflowStatus: 'packing' };

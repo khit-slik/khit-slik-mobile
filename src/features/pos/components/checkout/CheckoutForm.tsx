@@ -302,7 +302,7 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
                     }
                     onPress={() => {
                       if (kpayModeLocked && option.id !== 'cashdown') {
-                        toast.error('KPay ငွေလွှဲ မှတ်တမ်းရှိပြီးသား Cashdown အော်ဒါကို COD သို့မဟုတ် FOC သို့ ပြောင်းလို့မရပါ');
+                        toast.error('Finance အတည်ပြုရန် စောင့်နေသော Cashdown အော်ဒါကို COD သို့မဟုတ် FOC သို့ ပြောင်းလို့မရပါ');
                         return;
                       }
                       cart.selectPaymentMode(option.id);

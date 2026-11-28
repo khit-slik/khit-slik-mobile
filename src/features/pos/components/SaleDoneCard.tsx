@@ -4,6 +4,7 @@ import {
   Alert,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TouchableOpacity,
   useWindowDimensions,
@@ -14,6 +15,7 @@ import { router, useFocusEffect } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { getErrorMessage } from '../../../services/api/client';
+import { printerService } from '../../../services/printerService';
 import type { CompletedSale } from '../../../store/cartStore';
 import { usePrinterStore } from '../../../store/printerStore';
 import { getChangeAmount, getPaymentLabel, isCod, isFoc } from '../lib';
@@ -70,6 +72,8 @@ export default function SaleDoneCard({ sale, title, subtitle, receiptAction = 'p
 
   const autoPrint = usePrinterStore((state) => state.autoPrint);
   const connectedPrinter = usePrinterStore((state) => state.connectedPrinter);
+  const showPaymentDetails = usePrinterStore((state) => state.showPaymentDetails);
+  const setShowPaymentDetails = usePrinterStore((state) => state.setShowPaymentDetails);
   const saveKey = `${order._id}:${sale.completedAt}`;
   const canPrint = receiptAction === 'print';
   const shouldAutoPrint = canPrint && autoPrint && !autoPrintedSaves.has(saveKey);
@@ -160,6 +164,18 @@ export default function SaleDoneCard({ sale, title, subtitle, receiptAction = 'p
             )}
             {change > 0 && <Row label="ပြန်အမ်းငွေ" value={formatMMK(change)} valueStyle={styles.change} />}
             {customer && <Row label="ဝယ်သူ" value={customer.name} />}
+          </View>
+
+          <View style={styles.toggleRow}>
+            <Text style={styles.toggleLabel}>ငွေပေးချေမှု အသေးစိတ် ပြရန်</Text>
+            <Switch
+              value={showPaymentDetails}
+              onValueChange={(enabled) => {
+                setShowPaymentDetails(enabled);
+                printerService.savePreferences();
+              }}
+              trackColor={{ true: colors.primary, false: '#cbd5e1' }}
+            />
           </View>
 
           {canPrint && (
@@ -361,6 +377,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingHorizontal: 4,
+  },
+  toggleLabel: {
+    flex: 1,
+    fontSize: 13.5,
+    fontWeight: '600',
+    color: colors.text,
   },
   printerInfo: {
     flex: 1,

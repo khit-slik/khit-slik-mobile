@@ -46,9 +46,11 @@ export default function PrinterSettingsScreen() {
     paperWidth,
     printMode,
     autoPrint,
+    showPaymentDetails,
     setPaperWidth,
     setPrintMode,
     setAutoPrint,
+    setShowPaymentDetails,
   } = usePrinterStore();
   const [connectingAddress, setConnectingAddress] = useState<string | null>(null);
   const [isTestPrinting, setIsTestPrinting] = useState(false);
@@ -298,6 +300,21 @@ export default function PrinterSettingsScreen() {
           <Switch
             value={autoPrint}
             onValueChange={(enabled) => savePreference(() => setAutoPrint(enabled))}
+            trackColor={{ true: colors.primary, false: '#cbd5e1' }}
+          />
+        </View>
+
+        {/* 5. Show payment details on thermal receipts */}
+        <View style={[styles.card, styles.switchCard]}>
+          <View style={styles.flex}>
+            <Text style={styles.cardTitle}>ငွေပေးချေမှု အသေးစိတ် ပြရန်</Text>
+            <Text style={[styles.cardSubtitle, styles.noMargin]}>
+              ဘောင်ချာတွင် ပေးချေမှုအမျိုးအစား၊ ပေးငွေ၊ ကျန်ငွေနှင့် ပြန်အမ်းငွေများ ဖော်ပြမည်
+            </Text>
+          </View>
+          <Switch
+            value={showPaymentDetails}
+            onValueChange={(enabled) => savePreference(() => setShowPaymentDetails(enabled))}
             trackColor={{ true: colors.primary, false: '#cbd5e1' }}
           />
         </View>

@@ -70,7 +70,9 @@ export const isCashdownKpayModeLocked = (order: PosOrderDetail | null) =>
   order !== null &&
   order.isPreOrder !== true &&
   resolveOrderCategory(order) === 'cashdown' &&
-  (order.hasKpayTransactions === true ||
+  (order.workflowStatus === 'finance_pending' ||
+    order.workflowStatus === 'finance_adjustment' ||
+    order.hasKpayTransactions === true ||
     order.paymentVerificationStatus === 'partial' ||
     order.paymentVerificationStatus === 'verified');
 

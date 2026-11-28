@@ -237,9 +237,15 @@ describe('isOrderEditLocked / isOrderPaymentFormLocked', () => {
     expect(isOrderEditLocked(order({ paymentType: 'credit', paymentMethod: 'kpay', workflowStatus: 'finance_pending', orderStatus: 'cancelled' }))).toBe(true);
   });
 
-  it('blocks Cashdown mode switching when any KPay record or partial/verified status exists', () => {
+  it('blocks Cashdown mode switching while awaiting Finance or when any KPay record or partial/verified status exists', () => {
     expect(
       isCashdownKpayModeLocked(order({ paymentType: 'credit', paymentMethod: 'kpay', workflowStatus: 'finance_pending', hasKpayTransactions: false, paymentVerificationStatus: 'unverified' })),
+    ).toBe(true);
+    expect(
+      isCashdownKpayModeLocked(order({ paymentType: 'credit', paymentMethod: 'kpay', workflowStatus: 'finance_adjustment', hasKpayTransactions: false, paymentVerificationStatus: 'unverified' })),
+    ).toBe(true);
+    expect(
+      isCashdownKpayModeLocked(order({ paymentType: 'credit', paymentMethod: 'kpay', workflowStatus: undefined, hasKpayTransactions: false, paymentVerificationStatus: 'unverified' })),
     ).toBe(false);
     expect(
       isCashdownKpayModeLocked(order({ paymentType: 'credit', paymentMethod: 'kpay', workflowStatus: 'finance_pending', hasKpayTransactions: true, paymentVerificationStatus: 'unverified' })),

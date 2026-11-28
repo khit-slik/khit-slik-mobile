@@ -33,6 +33,7 @@ export interface ReceiptData {
   shopAddress?: string;
   shopPhone?: string;
   footerMessage?: string;
+  showPaymentDetails?: boolean;
 }
 
 type CaptureCallback = (receipt: ReceiptData, paperWidth: 58 | 80) => Promise<string>;

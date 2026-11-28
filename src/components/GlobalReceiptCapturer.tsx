@@ -4,15 +4,11 @@ import { captureRef } from 'react-native-view-shot';
 import { receiptCaptureService, ReceiptData } from '../services/receiptCaptureService';
 import ReceiptPrintTemplate from './ReceiptPrintTemplate';
 
-// Longest wait for the shop logo to load; past it the receipt prints with the shop's initial instead
-const LOGO_WAIT_MS = 3000;
-
 // Renders the receipt off screen and captures it as a picture for image-mode printing (same as offline-pos)
 export default function GlobalReceiptCapturer() {
   const [activeReceipt, setActiveReceipt] = useState<{
     receipt: ReceiptData;
     paperWidth: 58 | 80;
-    // Remounts the template for each capture, so a logo that failed for one receipt is tried again
     id: number;
   } | null>(null);
   const captureIdRef = useRef(0);
@@ -21,8 +17,6 @@ export default function GlobalReceiptCapturer() {
   const isMountedRef = useRef(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRejectRef = useRef<((err: Error) => void) | null>(null);
-  // Starts the capture once the logo has loaded or failed
-  const logoSettledRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -74,18 +68,11 @@ export default function GlobalReceiptCapturer() {
           }
         };
         const startCapture = () => {
-          logoSettledRef.current = null;
           if (timerRef.current) clearTimeout(timerRef.current);
           timerRef.current = setTimeout(capture, 140);
         };
 
-        // A remote logo has to be on screen before the picture is taken
-        if (receipt.logoUrl) {
-          logoSettledRef.current = startCapture;
-          timerRef.current = setTimeout(startCapture, LOGO_WAIT_MS);
-        } else {
-          startCapture();
-        }
+        startCapture();
       });
     });
 
@@ -114,7 +101,6 @@ export default function GlobalReceiptCapturer() {
           key={activeReceipt.id}
           receipt={activeReceipt.receipt}
           paperWidth={activeReceipt.paperWidth}
-          onLogoSettled={() => logoSettledRef.current?.()}
         />
       </View>
     </View>

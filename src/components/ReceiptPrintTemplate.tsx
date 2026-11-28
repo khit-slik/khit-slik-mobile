@@ -1,10 +1,18 @@
-import React, { useMemo, useState } from 'react';
-import { Image, StyleSheet, Text, TextProps, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { StyleSheet, Text, TextProps, View } from 'react-native';
 
 import { PAYMENT_METHODS } from '../features/pos/lib/paymentMethods';
+import {
+  THERMAL_SHOP_CONTACT_LINES,
+  THERMAL_SHOP_TAGLINE,
+  THERMAL_SHOP_TITLE,
+  THERMAL_TRANSFER_ACCOUNTS,
+  THERMAL_TRANSFER_KPAY_ENTRIES,
+  THERMAL_TRANSFER_TITLE,
+  THERMAL_TRANSFER_WARNING,
+} from '../features/pos/lib/thermalReceiptNotice';
 import { RECEIPT_FONT } from '../fonts';
 import { ReceiptData } from '../services/receiptCaptureService';
-import { useShopStore } from '../store/shopStore';
 
 // Section order and proportions follow the web app's thermal voucher (VoucherContent.tsx); labels are Burmese.
 // Thermal printers print thin strokes faintly, hence black text at 700-900 weight and no grey.
@@ -15,8 +23,6 @@ const MAX_PRINTED_ITEMS = 200;
 interface Props {
   receipt: ReceiptData;
   paperWidth: 58 | 80;
-  // The logo finished loading or failed, so the picture can be taken
-  onLogoSettled?: () => void;
 }
 
 const amount = (value?: number) => Number(value ?? 0).toLocaleString('en-US');
@@ -27,45 +33,41 @@ const COLUMNS = {
   58: [42, 20, 14, 24],
 } as const;
 
-// Every line uses the Walone font
+// Every line uses the Walone font at exact pixel sizes regardless of device font-scale settings
 function T({ style, ...props }: TextProps) {
-  return <Text {...props} style={[styles.font, style]} />;
+  return <Text allowFontScaling={false} {...props} style={[styles.font, style]} />;
 }
 
-export default function ReceiptPrintTemplate({ receipt, paperWidth, onLogoSettled }: Props) {
-  const defaultShop = useShopStore((state) => state.shop);
-  const [logoFailed, setLogoFailed] = useState(false);
+export default function ReceiptPrintTemplate({ receipt, paperWidth }: Props) {
   const is80mm = paperWidth === 80;
   const [nameCol, priceCol, qtyCol, totalCol] = COLUMNS[paperWidth];
 
   // Text sizes as multiples of the body size, in the web's ratios (body 12px, total 22px, number 26px)
   const size = useMemo(() => {
     const base = is80mm ? 20 : 16.5;
-    const at = (multiple: number) => ({
+    const at = (multiple: number, lineHeightRatio = 1.5) => ({
       fontSize: Math.round(base * multiple),
-      lineHeight: Math.round(base * multiple * 1.5),
+      lineHeight: Math.round(base * multiple * lineHeightRatio),
     });
     return {
       body: at(1),
       small: at(0.85),
-      shopName: at(1.4),
+      contact: at(0.82, 1.35),
+      shopName: at(1.25, 1.3),
+      transferTitle: at(0.92, 1.4),
+      transferWarning: at(0.78, 1.4),
+      transferKpay: at(1.0, 1.35),
+      transferBank: at(0.98, 1.35),
+      transferNumber: at(1.15, 1.3),
+      tableHeader: at(0.92, 1.35),
       totalLabel: at(1.65),
       totalAmount: at(1.8),
       sequence: at(2.2),
-      logo: Math.round(base * 4),
     };
   }, [is80mm]);
 
-  const shopName = receipt.shopName || defaultShop.name;
-  const shopAddress = receipt.shopAddress || defaultShop.address;
-  const shopPhone = receipt.shopPhone || defaultShop.phone;
   const items = receipt.items || [];
-  const showLogo = !!receipt.logoUrl && !logoFailed;
-
-  const settleLogo = (failed: boolean) => {
-    if (failed) setLogoFailed(true);
-    onLogoSettled?.();
-  };
+  const showPaymentDetails = receipt.showPaymentDetails ?? true;
 
   // Right-aligned label and amount, like the web's summary rows
   const summaryRow = (label: string, value: string, strong = false) => (
@@ -83,24 +85,46 @@ export default function ReceiptPrintTemplate({ receipt, paperWidth, onLogoSettle
 
   return (
     <View style={[styles.container, { width: is80mm ? 576 : 384, paddingBottom: is80mm ? 150 : 130 }]}>
-      {/* 1. Logo (or the shop's initial) and shop details */}
-      <View style={styles.header}>
-        {showLogo ? (
-          <Image
-            source={{ uri: receipt.logoUrl }}
-            style={{ width: size.logo, height: size.logo }}
-            resizeMode="contain"
-            onLoad={() => settleLogo(false)}
-            onError={() => settleLogo(true)}
-          />
-        ) : (
-          <View style={[styles.logoFallback, { width: size.logo, height: size.logo }]}>
-            <T style={[styles.logoLetter, size.shopName]}>{shopName.charAt(0)}</T>
-          </View>
+      {/* 1. Compact boxed shop header matching the reference receipt */}
+      <View style={styles.headerBox}>
+        <T style={[styles.shopName, size.shopName]}>{THERMAL_SHOP_TITLE}</T>
+        {!!THERMAL_SHOP_TAGLINE && (
+          <T style={[styles.shopTagline, size.body]}>{THERMAL_SHOP_TAGLINE}</T>
         )}
-        <T style={[styles.shopName, size.shopName]}>{shopName}</T>
-        {!!shopAddress && <T style={[styles.centerText, size.small]}>{shopAddress}</T>}
-        {!!shopPhone && <T style={[styles.centerText, size.small]}>ဖုန်း: {shopPhone}</T>}
+        {THERMAL_SHOP_CONTACT_LINES.map((contact) => (
+          <T key={contact} style={[styles.contactLine, size.contact]}>
+            {contact}
+          </T>
+        ))}
+      </View>
+
+      <View style={styles.dashedLine} />
+
+      {/* Bank transfer notice, above the items because it refers to the numbers below it */}
+      <View style={styles.transferBlock}>
+        <T style={[styles.transferTitle, size.transferTitle]}>{THERMAL_TRANSFER_TITLE}</T>
+        <View style={styles.transferWarning}>
+          <T style={[styles.transferWarningText, size.transferWarning]}>{THERMAL_TRANSFER_WARNING}</T>
+        </View>
+        <View style={styles.transferKpayList}>
+          {THERMAL_TRANSFER_KPAY_ENTRIES.map((entry) => (
+            <View key={entry.number} style={styles.transferWrapRow}>
+              <T style={[styles.transferKpayLine, size.transferKpay]}>
+                {entry.label} {entry.number}{' '}
+              </T>
+              <T style={[styles.transferKpayLine, size.transferKpay]}>{entry.holder}</T>
+            </View>
+          ))}
+        </View>
+        {THERMAL_TRANSFER_ACCOUNTS.map((account) => (
+          <View key={account.number} style={styles.transferAccount}>
+            <View style={styles.transferWrapRow}>
+              <T style={[styles.transferBank, size.transferBank]}>{account.bank} </T>
+              <T style={[styles.transferBank, size.transferBank]}>({account.holder})</T>
+            </View>
+            <T style={[styles.transferNumber, size.transferNumber]}>{account.number}</T>
+          </View>
+        ))}
       </View>
 
       <View style={styles.dashedLine} />
@@ -115,11 +139,19 @@ export default function ReceiptPrintTemplate({ receipt, paperWidth, onLogoSettle
       )}
 
       {/* 3. Column headers */}
-      <View style={styles.row}>
-        <T style={[styles.th, size.body, { flex: nameCol }]}>ပစ္စည်းအမည်</T>
-        <T style={[styles.th, styles.right, size.body, { flex: priceCol }]}>နှုန်း</T>
-        <T style={[styles.th, styles.center, size.body, { flex: qtyCol }]}>အရေ</T>
-        <T style={[styles.th, styles.right, size.body, { flex: totalCol }]}>ကျသင့်ငွေ</T>
+      <View style={[styles.row, styles.thRow]}>
+        <T style={[styles.th, size.tableHeader, { flex: nameCol }]} numberOfLines={1}>
+          ITEM
+        </T>
+        <T style={[styles.th, styles.right, size.tableHeader, { flex: priceCol }]} numberOfLines={1}>
+          PRICE
+        </T>
+        <T style={[styles.th, styles.center, size.tableHeader, { flex: qtyCol }]} numberOfLines={1}>
+          QTY
+        </T>
+        <T style={[styles.th, styles.right, size.tableHeader, { flex: totalCol }]} numberOfLines={1}>
+          AMOUNT
+        </T>
       </View>
 
       {/* 4. Items (capped so the picture stays within Android's maximum bitmap height) */}
@@ -165,23 +197,27 @@ export default function ReceiptPrintTemplate({ receipt, paperWidth, onLogoSettle
         <T style={[styles.totalText, size.totalAmount]}>{amount(receipt.netTotal)}</T>
       </View>
 
-      <View style={styles.dashedLine} />
+      {/* 7. Payment (optional via "ငွေပေးချေမှု အသေးစိတ် ပြရန်" toggle) */}
+      {showPaymentDetails && (
+        <>
+          <View style={styles.dashedLine} />
 
-      {/* 7. Payment */}
-      <View style={styles.summary}>
-        {!!receipt.paymentType && summaryRow('ငွေပေးချေမှု', receipt.paymentType)}
-        {receipt.paidAmount !== undefined && summaryRow('ပေးငွေ', amount(receipt.paidAmount))}
-        {!!receipt.changeAmount &&
-          receipt.changeAmount > 0 &&
-          summaryRow('ပြန်အမ်းငွေ', amount(receipt.changeAmount))}
-        {!!receipt.dueAmount &&
-          receipt.dueAmount > 0 &&
-          summaryRow(
-            receipt.paymentType === PAYMENT_METHODS.COD ? 'COD ကောက်ခံရန်' : 'ကျန်ငွေ (အကြွေး)',
-            amount(receipt.dueAmount),
-            true,
-          )}
-      </View>
+          <View style={styles.summary}>
+            {!!receipt.paymentType && summaryRow('ငွေပေးချေမှု', receipt.paymentType)}
+            {receipt.paidAmount !== undefined && summaryRow('ပေးငွေ', amount(receipt.paidAmount))}
+            {!!receipt.changeAmount &&
+              receipt.changeAmount > 0 &&
+              summaryRow('ပြန်အမ်းငွေ', amount(receipt.changeAmount))}
+            {!!receipt.dueAmount &&
+              receipt.dueAmount > 0 &&
+              summaryRow(
+                receipt.paymentType === PAYMENT_METHODS.COD ? 'COD ကောက်ခံရန်' : 'ကျန်ငွေ (အကြွေး)',
+                amount(receipt.dueAmount),
+                true,
+              )}
+          </View>
+        </>
+      )}
 
       <View style={styles.dashedLine} />
 
@@ -233,28 +269,72 @@ const styles = StyleSheet.create({
   },
 
   /* Header */
-  header: {
+  headerBox: {
     alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
     marginBottom: 4,
-  },
-  logoFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#000000',
-    borderRadius: 12,
-  },
-  logoLetter: {
-    fontWeight: '900',
   },
   shopName: {
     fontWeight: '900',
     textAlign: 'center',
-    marginTop: 6,
+  },
+  shopTagline: {
+    fontWeight: '900',
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  contactLine: {
+    textAlign: 'center',
+    marginTop: 2,
   },
   centerText: {
     textAlign: 'center',
     paddingHorizontal: 6,
+  },
+
+  /* Bank transfer notice */
+  transferBlock: {
+    borderWidth: 2,
+    borderColor: '#000000',
+    padding: 8,
+    marginVertical: 6,
+  },
+  transferTitle: {
+    fontWeight: '900',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  transferWarning: {
+    borderWidth: 2,
+    borderColor: '#000000',
+    padding: 6,
+    marginBottom: 6,
+  },
+  transferWarningText: {
+    fontWeight: '900',
+  },
+  transferWrapRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  transferKpayList: {
+    gap: 6,
+    marginBottom: 10,
+  },
+  transferKpayLine: {
+    fontWeight: '900',
+  },
+  transferAccount: {
+    marginTop: 10,
+    gap: 2,
+  },
+  transferBank: {
+    fontWeight: '900',
+  },
+  transferNumber: {
+    fontWeight: '900',
+    letterSpacing: 0.5,
   },
 
   /* Dividers */
@@ -285,9 +365,14 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 4,
   },
+  thRow: {
+    borderBottomWidth: 1.5,
+    borderBottomColor: '#000000',
+    paddingBottom: 3,
+    marginBottom: 4,
+  },
   th: {
     fontWeight: '900',
-    paddingBottom: 4,
   },
   items: {
     gap: 4,

@@ -1,8 +1,15 @@
 import { Platform, PermissionsAndroid, NativeModules } from 'react-native';
 import RNFS from 'react-native-fs';
 import { BluetoothManager, BluetoothEscposPrinter } from 'react-native-bluetooth-escpos-printer';
+import {
+  THERMAL_SHOP_CONTACT_LINES,
+  THERMAL_SHOP_TITLE,
+  THERMAL_TRANSFER_ACCOUNTS,
+  THERMAL_TRANSFER_FALLBACK_TITLE,
+  THERMAL_TRANSFER_FALLBACK_WARNING,
+  THERMAL_TRANSFER_KPAY_LINES,
+} from '../features/pos/lib/thermalReceiptNotice';
 import { usePrinterStore, BluetoothDevice, PrintMode } from '../store/printerStore';
-import { useShopStore } from '../store/shopStore';
 import { receiptCaptureService, ReceiptData } from './receiptCaptureService';
 
 const CONFIG_FILE_PATH = `${RNFS.DocumentDirectoryPath}/printer_config.json`;
@@ -19,6 +26,7 @@ interface StoredPrinterConfig {
   paperWidth: 58 | 80;
   printMode?: PrintMode;
   autoPrint?: boolean;
+  showPaymentDetails?: boolean;
 }
 
 export interface ScanResult {
@@ -120,6 +128,9 @@ export const printerService = {
     if (config.paperWidth) store.setPaperWidth(config.paperWidth);
     if (config.printMode) store.setPrintMode(config.printMode);
     if (typeof config.autoPrint === 'boolean') store.setAutoPrint(config.autoPrint);
+    if (typeof config.showPaymentDetails === 'boolean') {
+      store.setShowPaymentDetails(config.showPaymentDetails);
+    }
     return config;
   },
 
@@ -131,11 +142,11 @@ export const printerService = {
     }
   },
 
-  // Paper width, print mode and auto-print, kept whether or not a printer is connected
+  // Paper width, print mode, auto-print, and receipt display toggles, kept whether or not a printer is connected
   async savePreferences(): Promise<void> {
-    const { paperWidth, printMode, autoPrint } = usePrinterStore.getState();
+    const { paperWidth, printMode, autoPrint, showPaymentDetails } = usePrinterStore.getState();
     try {
-      await writeConfigFile({ paperWidth, printMode, autoPrint });
+      await writeConfigFile({ paperWidth, printMode, autoPrint, showPaymentDetails });
     } catch (err) {
       console.warn('Failed to save printer preferences:', err);
     }
@@ -284,24 +295,28 @@ export const printerService = {
     if (!this.isAvailable()) {
       throw new Error('Bluetooth printing needs the Android app build (not available here).');
     }
-    const { paperWidth: savedWidth, printMode } = usePrinterStore.getState();
+    const { paperWidth: savedWidth, printMode, showPaymentDetails } = usePrinterStore.getState();
     const width = paperWidth || savedWidth;
+    const resolvedReceipt: ReceiptData = {
+      ...receipt,
+      showPaymentDetails: receipt.showPaymentDetails ?? showPaymentDetails,
+    };
 
     if (!(await this.ensureConnected())) {
       throw new Error('Printer is not connected. Please connect via printer settings.');
     }
 
     if (printMode === 'text') {
-      await this.printTextReceipt(receipt, width);
+      await this.printTextReceipt(resolvedReceipt, width);
       return;
     }
 
     try {
-      await this.printImageReceipt(receipt, width);
+      await this.printImageReceipt(resolvedReceipt, width);
     } catch (err) {
       if (!isConnectionLost(err) || !(await this.ensureConnected())) throw err;
       // The socket dropped while the receipt was being drawn: once more after reconnecting
-      await this.printImageReceipt(receipt, width);
+      await this.printImageReceipt(resolvedReceipt, width);
     }
   },
 
@@ -322,7 +337,6 @@ export const printerService = {
     // Item / Price / Qty / Total, in the web voucher's order
     const columns = is80mm ? [22, 8, 6, 10] : [14, 6, 4, 8];
     const totals = is80mm ? [34, 12] : [20, 12];
-    const shop = useShopStore.getState().shop;
     const amount = (value?: number) => Number(value || 0).toLocaleString('en-US');
     const line = (text: string) => BluetoothEscposPrinter.printText(`${text}\n`, {});
     const totalRow = (label: string, value: string) =>
@@ -331,20 +345,26 @@ export const printerService = {
     // Same sections as the picture receipt (ReceiptPrintTemplate), in English
     await BluetoothEscposPrinter.printerInit();
     await BluetoothEscposPrinter.printerAlign(ALIGN.CENTER);
-    await line(receipt.shopName || shop.name);
-    const address = receipt.shopAddress || shop.address;
-    if (address) await line(address);
-    const phone = receipt.shopPhone || shop.phone;
-    if (phone) await line(`Tel: ${phone}`);
+    await line(THERMAL_SHOP_TITLE);
+    for (const contact of THERMAL_SHOP_CONTACT_LINES) await line(contact);
+    await line(separator.trimEnd());
 
     await BluetoothEscposPrinter.printerAlign(ALIGN.LEFT);
+    // ESC/POS text can't draw Burmese glyphs, so this path prints the English fallback notice
+    await line(THERMAL_TRANSFER_FALLBACK_TITLE);
+    await line(THERMAL_TRANSFER_FALLBACK_WARNING);
+    for (const kpayLine of THERMAL_TRANSFER_KPAY_LINES) await line(kpayLine);
+    for (const account of THERMAL_TRANSFER_ACCOUNTS) {
+      await line(`${account.bank} (${account.holder})`);
+      await line(account.number);
+    }
     await line(separator.trimEnd());
     if (receipt.customerName) await line(`Customer: ${receipt.customerName}`);
     if (receipt.customerPhone) await line(`Phone: ${receipt.customerPhone}`);
     if (receipt.customerAddress) await line(`Address: ${receipt.customerAddress}`);
 
     const aligns = [ALIGN.LEFT, ALIGN.RIGHT, ALIGN.CENTER, ALIGN.RIGHT];
-    await BluetoothEscposPrinter.printColumn(columns, aligns, ['Item', 'Price', 'Qty', 'Total'], {});
+    await BluetoothEscposPrinter.printColumn(columns, aligns, ['ITEM', 'PRICE', 'QTY', 'AMOUNT'], {});
     for (const item of receipt.items) {
       await BluetoothEscposPrinter.printColumn(
         columns,
@@ -368,11 +388,13 @@ export const printerService = {
     await totalRow('TOTAL:', amount(receipt.netTotal));
     await line(separator.trimEnd());
 
-    if (receipt.paymentType) await totalRow('Payment:', receipt.paymentType);
-    if (receipt.paidAmount !== undefined) await totalRow('Paid:', amount(receipt.paidAmount));
-    if (receipt.changeAmount) await totalRow('Change:', amount(receipt.changeAmount));
-    if (receipt.dueAmount) await totalRow('Balance due:', amount(receipt.dueAmount));
-    await line(separator.trimEnd());
+    if (receipt.showPaymentDetails ?? true) {
+      if (receipt.paymentType) await totalRow('Payment:', receipt.paymentType);
+      if (receipt.paidAmount !== undefined) await totalRow('Paid:', amount(receipt.paidAmount));
+      if (receipt.changeAmount) await totalRow('Change:', amount(receipt.changeAmount));
+      if (receipt.dueAmount) await totalRow('Balance due:', amount(receipt.dueAmount));
+      await line(separator.trimEnd());
+    }
 
     if (receipt.note) await line(`Note: ${receipt.note}`);
     await totalRow('Receipt:', receipt.invoiceNo);

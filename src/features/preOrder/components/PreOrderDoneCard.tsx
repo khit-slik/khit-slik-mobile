@@ -1,10 +1,11 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { getErrorMessage } from '../../../services/api/client';
+import { printerService } from '../../../services/printerService';
 import type { SavedPreOrder } from '../../../store/preOrderStore';
 import { usePrinterStore } from '../../../store/printerStore';
 import { colors, formatMMK, TABLET_MIN_WIDTH } from '../../pos/theme';
@@ -31,6 +32,8 @@ export default function PreOrderDoneCard({ saved, title, subtitle, onExit, onVie
   const isTablet = width >= TABLET_MIN_WIDTH;
 
   const connectedPrinter = usePrinterStore((state) => state.connectedPrinter);
+  const showPaymentDetails = usePrinterStore((state) => state.showPaymentDetails);
+  const setShowPaymentDetails = usePrinterStore((state) => state.setShowPaymentDetails);
   const [printStatus, setPrintStatus] = useState<PrintStatus>('idle');
   const [printError, setPrintError] = useState('');
   // Set when printing failed for want of a printer: print on return from the printer page, if connected
@@ -91,6 +94,18 @@ export default function PreOrderDoneCard({ saved, title, subtitle, onExit, onVie
               label="ကျန်ငွေ"
               value={formatMMK(Math.max(0, totals.balance))}
               valueStyle={totals.balance > 0 ? styles.due : styles.paid}
+            />
+          </View>
+
+          <View style={styles.toggleRow}>
+            <Text style={styles.toggleLabel}>ငွေပေးချေမှု အသေးစိတ် ပြရန်</Text>
+            <Switch
+              value={showPaymentDetails}
+              onValueChange={(enabled) => {
+                setShowPaymentDetails(enabled);
+                printerService.savePreferences();
+              }}
+              trackColor={{ true: colors.primary, false: '#cbd5e1' }}
             />
           </View>
 
@@ -245,6 +260,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingHorizontal: 4,
+  },
+  toggleLabel: {
+    flex: 1,
+    fontSize: 13.5,
+    fontWeight: '600',
+    color: colors.text,
   },
   printerInfo: {
     flex: 1,
