@@ -59,7 +59,14 @@ describe('order edit cart', () => {
     store().setCustomer({ _id: 'cp1', region: 'mandalay' });
 
     const state = store();
-    const totals = computeTotals(state);
+    const totals = computeTotals({
+      items: state.items,
+      priceMode: state.priceMode,
+      discountPercent: state.discountPercent,
+      legacyMarkup: state.legacyMarkup,
+      inheritedTax: state.inheritedTax,
+      deliveryFee: state.deliveryFee,
+    });
     expect(totals).toMatchObject({ markupAmount: 100, deliveryFee: 500, total: 2500 });
     expect(buildUpdateOrderPayload({ ...state, totals })).toMatchObject({
       creditPersonId: 'cp1',
@@ -69,13 +76,21 @@ describe('order edit cart', () => {
       finalAmount: 2500,
       paidAmount: 2500,
     });
+
+    // A fresh new-sale cart has zero inherited markup even while/after editing a legacy order
+    useCartStore.getState().addProduct({ ...oil, availableQuantity: 5 });
+    expect(useCartStore.getState().legacyMarkup).toBe(0);
+    expect(computeTotals(useCartStore.getState())).toMatchObject({ markupAmount: 0, total: 1000 });
   });
 
-  it('saving clears the order being edited', () => {
+  it('saving clears the order being edited and resets legacyMarkup', () => {
+    store().startEdit(orderToDraft({ ...order, finalAmount: 2100 }, new Map([['oil', oil]])).draft);
+    expect(store().legacyMarkup).toBe(200);
     store().openCheckout();
     const sale = store().completeSale(order, null);
     expect(sale.items).toHaveLength(1);
     expect(store().editingOrder).toBeNull();
+    expect(store().legacyMarkup).toBe(0);
     expect(store().items).toEqual([]);
     expect(store().lastSale).toBe(sale);
   });

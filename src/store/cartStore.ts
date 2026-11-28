@@ -42,6 +42,7 @@ export interface CompletedSale {
   order: PosOrder;
   items: CartItem[];
   totals: Totals;
+  tax?: number;
   paymentType: PaymentType;
   paymentMethod: PaymentMethod;
   paidAmount: number;
@@ -56,7 +57,8 @@ export interface CartState {
   originalQuantities: OriginalQuantities;
   priceMode: PriceMode;
   discountPercent: number;
-  markupAmount: number;
+  legacyMarkup: number;
+  inheritedTax: number;
   paymentMode: PaymentMode | null;
   paymentType: PaymentType;
   paymentMethod: PaymentMethod;
@@ -89,7 +91,6 @@ export interface CartState {
 
   setPriceMode: (mode: PriceMode) => void;
   setDiscountPercent: (percent: number) => void;
-  setMarkupAmount: (amount: number) => void;
   selectPaymentMode: (mode: PaymentMode) => void;
   selectPaymentOption: (option: PaymentOption) => void;
   selectPaymentForm: (form: PaymentForm) => void;
@@ -114,7 +115,8 @@ type CartData = Pick<
   | 'originalQuantities'
   | 'priceMode'
   | 'discountPercent'
-  | 'markupAmount'
+  | 'legacyMarkup'
+  | 'inheritedTax'
   | 'paymentMode'
   | 'paymentType'
   | 'paymentMethod'
@@ -134,7 +136,8 @@ const initialData = (): CartData => ({
   originalQuantities: {},
   priceMode: 'normal',
   discountPercent: 0,
-  markupAmount: 0,
+  legacyMarkup: 0,
+  inheritedTax: 0,
   paymentMode: null,
   paymentType: 'paid',
   paymentMethod: PAYMENT_METHODS.COD,
@@ -149,8 +152,24 @@ const initialData = (): CartData => ({
   editingOrder: null,
 });
 
-const totalOf = (state: Pick<CartData, 'items' | 'priceMode' | 'discountPercent' | 'markupAmount' | 'deliveryFee'>) =>
-  computeTotals(state).total;
+const effectiveTotalsFor = (
+  state: Pick<CartData, 'items' | 'priceMode' | 'discountPercent' | 'legacyMarkup' | 'inheritedTax' | 'deliveryFee' | 'paymentMode' | 'paymentMethod' | 'editingOrder'>,
+): Totals => {
+  const isFocOrder = state.paymentMode === 'foc' || isFoc(state.paymentMethod);
+  const canInherit = Boolean(state.editingOrder) && !isFocOrder;
+  return computeTotals({
+    items: state.items,
+    priceMode: state.priceMode,
+    discountPercent: state.discountPercent,
+    legacyMarkup: canInherit ? state.legacyMarkup : 0,
+    inheritedTax: canInherit ? state.inheritedTax : 0,
+    deliveryFee: state.deliveryFee,
+  });
+};
+
+const totalOf = (
+  state: Pick<CartData, 'items' | 'priceMode' | 'discountPercent' | 'legacyMarkup' | 'inheritedTax' | 'deliveryFee' | 'paymentMode' | 'paymentMethod' | 'editingOrder'>,
+) => effectiveTotalsFor(state).total;
 
 // Syncs paidAmount to confirmed rules:
 // - COD (Option B): paidAmount = finalAmount
@@ -187,17 +206,16 @@ export const createCartStore = () => create<CartState>((set, get) => {
 
   const modeFields = (
     mode: PaymentMode,
-  ): Pick<CartData, 'paymentMode' | 'paymentType' | 'paymentMethod' | 'paidAmount' | 'priceMode' | 'discountPercent' | 'markupAmount'> => {
+  ): Pick<CartData, 'paymentMode' | 'paymentType' | 'paymentMethod' | 'paidAmount' | 'priceMode' | 'discountPercent'> => {
     const state = get();
     if (mode === 'cod') {
       return {
         paymentMode: 'cod',
         paymentType: 'paid',
         paymentMethod: PAYMENT_METHODS.COD,
-        paidAmount: Math.ceil(totalOf(state)),
+        paidAmount: Math.ceil(totalOf({ ...state, paymentMode: 'cod', paymentMethod: PAYMENT_METHODS.COD })),
         priceMode: state.priceMode,
         discountPercent: state.discountPercent,
-        markupAmount: state.markupAmount,
       };
     }
     if (mode === 'cashdown') {
@@ -205,10 +223,12 @@ export const createCartStore = () => create<CartState>((set, get) => {
         paymentMode: 'cashdown',
         paymentType: 'credit',
         paymentMethod: PAYMENT_METHODS.KBZ_PAY,
-        paidAmount: Math.max(Math.ceil(totalOf(state)), state.paidAmount || 0),
+        paidAmount: Math.max(
+          Math.ceil(totalOf({ ...state, paymentMode: 'cashdown', paymentMethod: PAYMENT_METHODS.KBZ_PAY })),
+          state.paidAmount || 0,
+        ),
         priceMode: state.priceMode,
         discountPercent: state.discountPercent,
-        markupAmount: state.markupAmount,
       };
     }
     return {
@@ -218,7 +238,6 @@ export const createCartStore = () => create<CartState>((set, get) => {
       paidAmount: 0,
       priceMode: 'normal',
       discountPercent: 0,
-      markupAmount: 0,
     };
   };
 
@@ -265,12 +284,10 @@ export const createCartStore = () => create<CartState>((set, get) => {
 
     setPriceMode: (priceMode) => {
       if (isFoc(get().paymentMethod)) return;
-      if (priceMode === 'normal') update({ priceMode, discountPercent: 0, markupAmount: 0 });
-      else if (priceMode === 'discount') update({ priceMode, markupAmount: 0 });
-      else update({ priceMode, discountPercent: 0 });
+      if (priceMode === 'normal') update({ priceMode, discountPercent: 0 });
+      else update({ priceMode });
     },
     setDiscountPercent: (percent) => update({ discountPercent: Number(percent) || 0 }),
-    setMarkupAmount: (amount) => update({ markupAmount: Number(amount) || 0 }),
 
     selectPaymentMode: (mode) => {
       const state = get();
@@ -372,12 +389,15 @@ export const createCartStore = () => create<CartState>((set, get) => {
     // The order was saved: remember it and start a fresh cart
     completeSale: (order, customer) => {
       const state = get();
-      const totals = computeTotals(state);
+      const totals = effectiveTotalsFor(state);
       const mode = state.paymentMode ?? resolvePaymentMode(state) ?? 'cod';
+      const isFocOrder = mode === 'foc' || isFoc(state.paymentMethod);
+      const effectiveTax = Boolean(state.editingOrder) && !isFocOrder && state.inheritedTax > 0 ? state.inheritedTax : 0;
       const sale: CompletedSale = {
         order,
         items: state.items,
         totals,
+        ...(effectiveTax > 0 ? { tax: effectiveTax } : {}),
         paymentType: mode === 'cashdown' ? 'credit' : mode === 'foc' ? 'foc' : 'paid',
         paymentMethod: state.paymentMethod,
         paidAmount: getFinalPaidAmount(state.paymentMethod, state.paidAmount, totals.total, mode),
@@ -413,10 +433,25 @@ export const useCartTotals = () => {
   const items = useCart((state) => state.items);
   const priceMode = useCart((state) => state.priceMode);
   const discountPercent = useCart((state) => state.discountPercent);
-  const markupAmount = useCart((state) => state.markupAmount);
+  const legacyMarkup = useCart((state) => state.legacyMarkup);
+  const inheritedTax = useCart((state) => state.inheritedTax);
   const deliveryFee = useCart((state) => state.deliveryFee);
+  const paymentMode = useCart((state) => state.paymentMode);
+  const paymentMethod = useCart((state) => state.paymentMethod);
+  const editingOrder = useCart((state) => state.editingOrder);
   return useMemo(
-    () => computeTotals({ items, priceMode, discountPercent, markupAmount, deliveryFee }),
-    [items, priceMode, discountPercent, markupAmount, deliveryFee],
+    () =>
+      effectiveTotalsFor({
+        items,
+        priceMode,
+        discountPercent,
+        legacyMarkup,
+        inheritedTax,
+        deliveryFee,
+        paymentMode,
+        paymentMethod,
+        editingOrder,
+      }),
+    [items, priceMode, discountPercent, legacyMarkup, inheritedTax, deliveryFee, paymentMode, paymentMethod, editingOrder],
   );
 };

@@ -1,5 +1,6 @@
 import type { PosProduct } from '../../../../services/pos/types';
 import {
+  buildAlertDestination,
   classifyStock,
   countAlerts,
   countUnread,
@@ -101,5 +102,17 @@ describe('mergeAlerts', () => {
   it('drops a product that is no longer low and adds a new one', () => {
     const merged = mergeAlerts(current, [product('b', 30), product('c', 1)], rules);
     expect(merged.map((a) => a.id)).toEqual(['low_c', 'low_a']);
+  });
+});
+
+describe('buildAlertDestination', () => {
+  it('builds the inventory detail route for View', () => {
+    expect(buildAlertDestination('view', 'prod-123')).toBe('/inventory?productId=prod-123');
+  });
+
+  it('builds the new purchase order route for Order', () => {
+    expect(buildAlertDestination('order', 'prod 123&x=1')).toBe(
+      '/purchasing/new?productId=prod+123%26x%3D1',
+    );
   });
 });

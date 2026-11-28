@@ -132,15 +132,15 @@ describe('checkout delivery', () => {
 });
 
 describe('price mode', () => {
-  it('switching mode clears the other mode’s value', () => {
+  it('supports normal and discount modes without editable markup or inherited adjustments', () => {
     fillCart();
+    expect('setMarkupAmount' in store()).toBe(false);
+    expect(store().legacyMarkup).toBe(0);
     store().setPriceMode('discount');
     store().setDiscountPercent(10);
-    store().setPriceMode('markup');
-    expect(store().discountPercent).toBe(0);
-    store().setMarkupAmount(500);
+    expect(store().discountPercent).toBe(10);
     store().setPriceMode('normal');
-    expect(store().markupAmount).toBe(0);
+    expect(store().discountPercent).toBe(0);
   });
 });
 
@@ -205,7 +205,7 @@ describe('payment options', () => {
     });
 
     store().setPaymentMethod(PAYMENT_METHODS.CASH);
-    store().setPriceMode('markup');
+    store().setPriceMode('discount');
     expect(store().paymentMethod).toBe(PAYMENT_METHODS.FOC);
     expect(store().priceMode).toBe('normal');
   });

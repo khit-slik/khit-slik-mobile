@@ -31,7 +31,6 @@ import {
   isFoc,
   isCashdownKpayModeLocked,
   isOrderPaymentFormLocked,
-  markupPercentOf,
   PAYMENT_METHODS,
   PaymentMode,
   PriceMode,
@@ -55,7 +54,6 @@ const PAYMENT_MODE_OPTIONS: { id: PaymentMode; label: string }[] = [
 const PRICE_MODES: { id: PriceMode; label: string }[] = [
   { id: 'normal', label: 'ရိုးရိုးပေးချေမယ်' },
   { id: 'discount', label: 'လျှော့ဈေး (Discount)' },
-  { id: 'markup', label: 'Mark Up' },
 ];
 
 const digitsOnly = (text: string) => Number(text.replace(/[^0-9]/g, '')) || 0;
@@ -127,6 +125,7 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
   const input: CheckoutInput = {
     items: cart.items,
     totals,
+    ...(cart.editingOrder && !foc && cart.inheritedTax > 0 ? { inheritedTax: cart.inheritedTax } : {}),
     paymentMode: activeMode,
     paymentType: cashdown ? 'credit' : foc ? 'foc' : 'paid',
     paymentMethod: cod ? PAYMENT_METHODS.COD : foc ? PAYMENT_METHODS.FOC : PAYMENT_METHODS.KBZ_PAY,
@@ -365,25 +364,6 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
               </Section>
             )}
 
-            {!foc && cart.priceMode === 'markup' && (
-              <Section
-                label="Mark Up Amount (MMK)"
-                note={
-                  cart.markupAmount > 0
-                    ? `${markupPercentOf(cart.markupAmount, totals.subtotal).toFixed(2)}%`
-                    : undefined
-                }
-              >
-                <TextInput
-                  style={styles.input}
-                  value={cart.markupAmount ? String(cart.markupAmount) : ''}
-                  onChangeText={(text) => cart.setMarkupAmount(digitsOnly(text))}
-                  placeholder="0"
-                  keyboardType="number-pad"
-                />
-              </Section>
-            )}
-
             <Section label={cod ? "COD ငွေပမာဏ (ကျသင့်ငွေအပြည့်)" : "ပေးချေမှု ပမာဏ"}>
               <TextInput
                 style={[styles.input, styles.paidInput, (noUpfrontPayment || !activeMode) && styles.inputDisabled]}
@@ -413,8 +393,11 @@ export default function CheckoutForm({ title, submitLabel, onSubmit, onClose: cl
               {totals.discountAmount > 0 && (
                 <SummaryRow label="လျှော့ဈေး" value={`- ${formatMMK(totals.discountAmount)}`} />
               )}
-              {totals.markupAmount > 0 && (
-                <SummaryRow label="Mark Up" value={`+ ${formatMMK(totals.markupAmount)}`} />
+              {!!cart.editingOrder && !foc && totals.markupAmount > 0 && (
+                <SummaryRow label="ယခင် Mark Up (ပြင်ဆင်၍မရပါ)" value={`+ ${formatMMK(totals.markupAmount)}`} />
+              )}
+              {!!cart.editingOrder && !foc && cart.inheritedTax > 0 && (
+                <SummaryRow label="အခွန်" value={`+ ${formatMMK(cart.inheritedTax)}`} />
               )}
               {totals.deliveryFee > 0 && (
                 <SummaryRow label="ပို့ခ" value={`+ ${formatMMK(totals.deliveryFee)}`} />

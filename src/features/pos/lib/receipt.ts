@@ -89,6 +89,7 @@ export const toReceiptData = (
     discount: totals.discountAmount,
     discountPercent: totals.subtotal > 0 ? (totals.discountAmount / totals.subtotal) * 100 : 0,
     markup: totals.markupAmount,
+    ...(sale.tax ? { tax: sale.tax } : {}),
     serviceCharge: totals.deliveryFee || undefined,
     netTotal: totals.total,
     paidAmount,

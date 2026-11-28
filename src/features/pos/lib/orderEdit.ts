@@ -19,7 +19,8 @@ export interface OrderEditDraft {
   originalQuantities: OriginalQuantities;
   priceMode: PriceMode;
   discountPercent: number;
-  markupAmount: number;
+  legacyMarkup: number;
+  inheritedTax: number;
   paymentMode: PaymentMode | null;
   paymentType: PaymentType;
   paymentMethod: PaymentMethod;
@@ -122,21 +123,29 @@ const toCartProduct = (line: OrderLine, qty: number, fresh: PosProduct | undefin
   };
 };
 
-// The discount is stored as an amount; the cart works in percent of the subtotal.
-// An order whose total is above its subtotal was marked up.
+// Reconcile historical markup above saved checkout baseline (subTotal - discount + tax + deliveryFee).
+// Rounding residue (< 1 MMK) never generates an adjustment.
 const toPricing = (order: PosOrderDetail, foc: boolean) => {
-  const subtotal = order.subTotal || 0;
-  const discount = order.discount || 0;
-  const deliveryFee = order.deliveryFee ?? 0;
-  const goodsTotal = order.finalAmount == null ? subtotal - discount : order.finalAmount - deliveryFee;
-  if (foc) return { priceMode: 'normal' as const, discountPercent: 0, markupAmount: 0 };
+  const subtotal = Number(order.subTotal) || 0;
+  const discount = Number(order.discount) || 0;
+  const tax = Math.max(0, Number(order.tax) || 0);
+  const deliveryFee = Math.max(0, Number(order.deliveryFee) || 0);
+  if (foc) {
+    return { priceMode: 'normal' as const, discountPercent: 0, legacyMarkup: 0, inheritedTax: 0 };
+  }
+  const baseline = Math.max(0, subtotal - discount) + tax + deliveryFee;
+  const excess = order.finalAmount == null ? 0 : Number(order.finalAmount) - baseline;
+  const legacyMarkup = excess >= 1 ? Math.round(excess) : 0;
+
   if (subtotal > 0 && discount > 0) {
-    return { priceMode: 'discount' as const, discountPercent: (discount / subtotal) * 100, markupAmount: 0 };
+    return {
+      priceMode: 'discount' as const,
+      discountPercent: (discount / subtotal) * 100,
+      legacyMarkup,
+      inheritedTax: tax,
+    };
   }
-  if (goodsTotal > subtotal) {
-    return { priceMode: 'markup' as const, discountPercent: 0, markupAmount: goodsTotal - subtotal };
-  }
-  return { priceMode: 'normal' as const, discountPercent: 0, markupAmount: 0 };
+  return { priceMode: 'normal' as const, discountPercent: 0, legacyMarkup, inheritedTax: tax };
 };
 
 // Lines whose product is gone from the order (deleted inventory) are left out and counted
@@ -193,6 +202,7 @@ export const orderToDraft = (
 // Same fields as a new sale, plus each line's price
 export const buildUpdateOrderPayload = (input: CheckoutInput): UpdateOrderRequest => ({
   ...buildCreateOrderPayload(input),
+  ...(input.inheritedTax && input.inheritedTax > 0 ? { tax: input.inheritedTax } : {}),
   ordersProducts: input.items.map((item) => ({
     inventoryId: item.product._id,
     quantity: item.qty,

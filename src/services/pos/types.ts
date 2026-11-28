@@ -113,6 +113,7 @@ export interface OrderLine {
 export interface PosOrderDetail extends PosOrder {
   ordersProducts: OrderLine[];
   subTotal?: number;
+  tax?: number;
   discount?: number;
   finalAmount?: number;
   paidAmount?: number;

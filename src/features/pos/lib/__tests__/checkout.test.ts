@@ -12,7 +12,7 @@ import { computeTotals } from '../pricing';
 
 const product: PosProduct = { _id: 'inv1', productName: 'Oil', sellingPrice: 1000, availableQuantity: 10 };
 const items = [{ product, qty: 3 }];
-const totals = computeTotals({ items, priceMode: 'normal', discountPercent: 0, markupAmount: 0 }); // 3000
+const totals = computeTotals({ items, priceMode: 'normal', discountPercent: 0 }); // 3000
 
 const input = (overrides: Partial<CheckoutInput> = {}): CheckoutInput => ({
   items,
@@ -131,7 +131,7 @@ describe('buildCreateOrderPayload', () => {
   });
 
   it('sends discounts as an amount', () => {
-    const discounted = computeTotals({ items, priceMode: 'discount', discountPercent: 10, markupAmount: 0 });
+    const discounted = computeTotals({ items, priceMode: 'discount', discountPercent: 10 });
     expect(buildCreateOrderPayload(input({ totals: discounted, paidAmount: 2700 }))).toMatchObject({
       subTotal: 3000,
       discount: 300,
@@ -145,7 +145,6 @@ describe('buildCreateOrderPayload', () => {
       items,
       priceMode: 'discount',
       discountPercent: 10,
-      markupAmount: 0,
       deliveryFee: 500,
     });
     const checkout = input({

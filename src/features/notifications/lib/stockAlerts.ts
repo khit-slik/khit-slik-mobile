@@ -74,3 +74,12 @@ export const countUnread = (alerts: StockAlertItem[], readIds: string[]) => {
   const read = new Set(readIds);
   return alerts.filter((a) => !read.has(a.id)).length;
 };
+
+export const buildAlertDestination = (
+  action: 'view' | 'order',
+  productId: string,
+): string => {
+  const basePath = action === 'view' ? '/inventory' : '/purchasing/new';
+  const params = new URLSearchParams({ productId });
+  return `${basePath}?${params.toString()}`;
+};

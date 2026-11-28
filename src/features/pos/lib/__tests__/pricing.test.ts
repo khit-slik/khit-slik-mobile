@@ -7,7 +7,6 @@ import {
   getSafeQty,
   getSortedWholesaleTiers,
   getUnitPrice,
-  markupPercentOf,
 } from '../pricing';
 
 const product = (overrides: Partial<PosProduct> = {}): PosProduct => ({
@@ -85,7 +84,7 @@ describe('computeTotals', () => {
   ];
 
   it('normal price: total is the subtotal', () => {
-    expect(computeTotals({ items, priceMode: 'normal', discountPercent: 0, markupAmount: 0 })).toEqual({
+    expect(computeTotals({ items, priceMode: 'normal', discountPercent: 0 })).toEqual({
       itemCount: 5,
       subtotal: 2999,
       discountAmount: 0,
@@ -96,45 +95,48 @@ describe('computeTotals', () => {
   });
 
   it('discount: rounds the total and reports the difference', () => {
-    const totals = computeTotals({ items, priceMode: 'discount', discountPercent: 10, markupAmount: 0 });
+    const totals = computeTotals({ items, priceMode: 'discount', discountPercent: 10 });
     expect(totals.total).toBe(2699); // round(2699.1)
     expect(totals.discountAmount).toBe(300);
   });
 
   it('a 100% discount makes it free', () => {
-    const totals = computeTotals({ items, priceMode: 'discount', discountPercent: 100, markupAmount: 0 });
+    const totals = computeTotals({ items, priceMode: 'discount', discountPercent: 100 });
     expect(totals.total).toBe(0);
     expect(totals.discountAmount).toBe(2999);
   });
 
-  it('markup: adds the fixed amount and has no discount', () => {
-    const totals = computeTotals({ items, priceMode: 'markup', discountPercent: 10, markupAmount: 500 });
-    expect(totals.total).toBe(3499);
-    expect(totals.discountAmount).toBe(0);
-    expect(totals.markupAmount).toBe(500);
-  });
-
-  it('adds delivery after the goods discount or markup', () => {
-    const pricing = { items, discountPercent: 10, markupAmount: 500, deliveryFee: 400 };
-    expect(computeTotals({ ...pricing, priceMode: 'discount' })).toMatchObject({
+  it('adds delivery, read-only legacyMarkup, and inheritedTax after the goods discount', () => {
+    expect(
+      computeTotals({ items, priceMode: 'discount', discountPercent: 10, deliveryFee: 400 }),
+    ).toMatchObject({
       discountAmount: 300,
+      markupAmount: 0,
       deliveryFee: 400,
       total: 3099,
     });
-    expect(computeTotals({ ...pricing, priceMode: 'markup' })).toMatchObject({
+    expect(
+      computeTotals({
+        items,
+        priceMode: 'normal',
+        discountPercent: 0,
+        legacyMarkup: 500,
+        inheritedTax: 200,
+        deliveryFee: 400,
+      }),
+    ).toMatchObject({
       markupAmount: 500,
       deliveryFee: 400,
-      total: 3899,
+      total: 4099,
     });
   });
 
-  it('ignores values that belong to another price mode', () => {
-    expect(computeTotals({ items, priceMode: 'normal', discountPercent: 10, markupAmount: 500 }).total).toBe(2999);
-    expect(computeTotals({ items, priceMode: 'discount', discountPercent: 0, markupAmount: 500 }).total).toBe(2999);
+  it('ignores discountPercent in normal mode', () => {
+    expect(computeTotals({ items, priceMode: 'normal', discountPercent: 10 }).total).toBe(2999);
   });
 
   it('an empty cart totals 0', () => {
-    expect(computeTotals({ items: [], priceMode: 'normal', discountPercent: 0, markupAmount: 0 })).toEqual({
+    expect(computeTotals({ items: [], priceMode: 'normal', discountPercent: 0 })).toEqual({
       itemCount: 0,
       subtotal: 0,
       discountAmount: 0,
@@ -165,16 +167,9 @@ describe('discountPercentFromAmount', () => {
       { product: product({ _id: 'p2', sellingPrice: 333 }), qty: 3 },
     ];
     const percent = discountPercentFromAmount(300, 2999) as number;
-    const totals = computeTotals({ items, priceMode: 'discount', discountPercent: percent, markupAmount: 0 });
+    const totals = computeTotals({ items, priceMode: 'discount', discountPercent: percent });
     expect(totals.discountAmount).toBe(300);
     expect(totals.total).toBe(2699);
-  });
-});
-
-describe('markupPercentOf', () => {
-  it('is the share of the subtotal', () => {
-    expect(markupPercentOf(500, 2000)).toBe(25);
-    expect(markupPercentOf(500, 0)).toBe(0);
   });
 });
 

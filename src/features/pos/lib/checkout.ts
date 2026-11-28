@@ -18,6 +18,7 @@ export type CheckoutError =
 export interface CheckoutInput {
   items: CartItem[];
   totals: Totals;
+  inheritedTax?: number;
   paymentMode?: PaymentMode | null;
   paymentType: PaymentType;
   paymentMethod: PaymentMethod;

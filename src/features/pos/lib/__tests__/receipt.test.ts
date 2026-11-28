@@ -31,7 +31,7 @@ const sale = (overrides: Partial<CompletedSale> = {}): CompletedSale => {
     order: { _id: 'o1', orderNumber: 'INV/2026/0042' },
     items,
     // 5 x 900 + 2 x 333 = 5166
-    totals: computeTotals({ items, priceMode: 'normal', discountPercent: 0, markupAmount: 0 }),
+    totals: computeTotals({ items, priceMode: 'normal', discountPercent: 0 }),
     paymentType: 'paid',
     paymentMethod: PAYMENT_METHODS.CASH,
     paidAmount: 6000,
@@ -106,16 +106,16 @@ describe('toReceiptData', () => {
     });
   });
 
-  it('carries discounts and markups', () => {
+  it('carries discounts and historical legacy markups', () => {
     const items = sale().items;
     const discounted = toReceiptData(
-      sale({ totals: computeTotals({ items, priceMode: 'discount', discountPercent: 10, markupAmount: 0 }) }),
+      sale({ totals: computeTotals({ items, priceMode: 'discount', discountPercent: 10 }) }),
     );
     expect(discounted).toMatchObject({ subtotal: 5166, discount: 517, netTotal: 4649 });
     expect(discounted.discountPercent).toBeCloseTo(10.0077, 3);
 
     const markedUp = toReceiptData(
-      sale({ totals: computeTotals({ items, priceMode: 'markup', discountPercent: 0, markupAmount: 300 }) }),
+      sale({ totals: computeTotals({ items, priceMode: 'normal', discountPercent: 0, legacyMarkup: 300 }) }),
     );
     expect(markedUp).toMatchObject({ markup: 300, netTotal: 5466 });
   });

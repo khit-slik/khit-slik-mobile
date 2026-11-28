@@ -89,10 +89,68 @@ describe('orderToDraft', () => {
     expect(totals.total).toBe(2250);
   });
 
-  it('reads a total above the subtotal as a markup', () => {
-    const { draft } = orderToDraft(order({ finalAmount: 2800 }), fresh);
-    expect(draft.priceMode).toBe('markup');
-    expect(draft.markupAmount).toBe(300);
+  it('carries historical markup as read-only legacyMarkup without treating tax, delivery, or rounding as markup', () => {
+    // Use non-wholesale product (1000 MMK) so qty 10 -> 10,000 MMK exact
+    const silk: PosProduct = { _id: 'silk', productName: 'Silk', sellingPrice: 1000, availableQuantity: 20 };
+    const silkMap = new Map([['silk', silk]]);
+    // Plan fixture: subTotal 10,000 + deliveryFee 1,200, finalAmount 11,700 => legacyMarkup 500
+    const { draft } = orderToDraft(
+      order({
+        ordersProducts: [{ inventoryId: { _id: 'silk', productName: 'Silk' }, quantity: 10, unitPrice: 1000 }],
+        subTotal: 10000,
+        discount: 0,
+        deliveryFee: 1200,
+        finalAmount: 11700,
+        paidAmount: 11700,
+      }),
+      silkMap,
+    );
+    expect(draft.priceMode).toBe('normal');
+    expect(draft.legacyMarkup).toBe(500);
+    expect(draft.inheritedTax).toBe(0);
+    expect(computeTotals(draft)).toMatchObject({
+      subtotal: 10000,
+      markupAmount: 500,
+      deliveryFee: 1200,
+      total: 11700,
+    });
+
+    // Increasing goods to 12,000 keeps 500 MMK legacy adjustment => 13,700
+    const updatedTotals = computeTotals({
+      ...draft,
+      items: [{ product: silk, qty: 12 }],
+    });
+    expect(updatedTotals).toMatchObject({ subtotal: 12000, markupAmount: 500, deliveryFee: 1200, total: 13700 });
+
+    // Tax + delivery order (no markup): subTotal 10,000 + tax 500 + delivery 1,200 = 11,700 => legacyMarkup 0
+    const taxed = orderToDraft(
+      order({
+        ordersProducts: [{ inventoryId: { _id: 'silk', productName: 'Silk' }, quantity: 10, unitPrice: 1000 }],
+        subTotal: 10000,
+        tax: 500,
+        deliveryFee: 1200,
+        finalAmount: 11700,
+        paidAmount: 11700,
+      }),
+      silkMap,
+    ).draft;
+    expect(taxed.legacyMarkup).toBe(0);
+    expect(taxed.inheritedTax).toBe(500);
+    expect(computeTotals(taxed).total).toBe(11700);
+    expect(
+      buildUpdateOrderPayload({
+        ...taxed,
+        totals: computeTotals(taxed),
+        note: 'note only edit',
+      }),
+    ).toMatchObject({ tax: 500, finalAmount: 11700 });
+
+    // Sub-kyat rounding drift never creates legacy markup
+    const rounded = orderToDraft(
+      order({ subTotal: 1000, discount: 333.4, finalAmount: 667 }),
+      fresh,
+    ).draft;
+    expect(rounded.legacyMarkup).toBe(0);
   });
 
   it('keeps FOC orders free for both canonical and legacy FOC shapes', () => {
@@ -167,7 +225,7 @@ describe('buildUpdateOrderPayload', () => {
   const items = [{ product: oil, qty: 10 }];
   const input = (overrides: Partial<CheckoutInput> = {}): CheckoutInput => ({
     items,
-    totals: computeTotals({ items, priceMode: 'normal', discountPercent: 0, markupAmount: 0 }),
+    totals: computeTotals({ items, priceMode: 'normal', discountPercent: 0 }),
     paymentType: 'paid',
     paymentMethod: PAYMENT_METHODS.CASH,
     paidAmount: 9000,

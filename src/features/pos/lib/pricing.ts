@@ -5,7 +5,7 @@ export interface CartItem {
   qty: number;
 }
 
-export type PriceMode = 'normal' | 'discount' | 'markup';
+export type PriceMode = 'normal' | 'discount';
 
 export interface Totals {
   itemCount: number;
@@ -40,39 +40,30 @@ export const computeTotals = ({
   items,
   priceMode,
   discountPercent,
-  markupAmount,
+  legacyMarkup = 0,
+  inheritedTax = 0,
   deliveryFee = 0,
 }: {
   items: CartItem[];
   priceMode: PriceMode;
   discountPercent: number;
-  markupAmount: number;
+  legacyMarkup?: number;
+  inheritedTax?: number;
   deliveryFee?: number;
 }): Totals => {
   const itemCount = items.reduce((sum, item) => sum + getSafeQty(item.qty), 0);
   const subtotal = items.reduce((sum, item) => sum + getLineTotal(item), 0);
-
-  if (priceMode === 'markup') {
-    const markup = Number(markupAmount) || 0;
-    return {
-      itemCount,
-      subtotal,
-      discountAmount: 0,
-      markupAmount: markup,
-      deliveryFee,
-      total: subtotal + markup + deliveryFee,
-    };
-  }
-
   const percent = priceMode === 'discount' ? Number(discountPercent) || 0 : 0;
   const goodsTotal = Math.round(subtotal * (1 - percent / 100));
+  const markup = legacyMarkup > 0 ? Math.round(legacyMarkup) : 0;
+  const tax = inheritedTax > 0 ? Number(inheritedTax) || 0 : 0;
   return {
     itemCount,
     subtotal,
     discountAmount: Math.round(subtotal - goodsTotal),
-    markupAmount: 0,
+    markupAmount: markup,
     deliveryFee,
-    total: goodsTotal + deliveryFee,
+    total: goodsTotal + markup + tax + deliveryFee,
   };
 };
 
@@ -82,9 +73,5 @@ export const discountPercentFromAmount = (amount: number, subtotal: number): num
   if (!Number.isFinite(amount) || amount <= 0 || subtotal <= 0 || amount > subtotal) return null;
   return (amount / subtotal) * 100;
 };
-
-// What a markup amount is as a share of the subtotal, for the markup calculator's preview
-export const markupPercentOf = (amount: number, subtotal: number) =>
-  subtotal > 0 ? (amount / subtotal) * 100 : 0;
 
 export const getChangeAmount = (paidAmount: number, total: number) => Math.max(0, paidAmount - total);

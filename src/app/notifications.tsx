@@ -17,7 +17,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
-import { countAlerts, StockAlertItem } from '../features/notifications/lib/stockAlerts';
+import { buildAlertDestination, countAlerts, StockAlertItem } from '../features/notifications/lib/stockAlerts';
 import { TABLET_MIN_WIDTH } from '../features/pos/theme';
 import { webBridge } from '../services/webBridge';
 import { useNotificationSettingsStore } from '../store/notificationSettingsStore';
@@ -27,6 +27,18 @@ import { toast } from '../store/toastStore';
 // Layout, wording and colours follow offline-pos's NotificationScreen
 const PRIMARY = '#1b129c';
 const ITEMS_PER_PAGE = 50;
+const ALERT_ROW_PADDING_H = 16;
+const ALERT_COLUMNS = {
+  no: 52,
+  name: 230,
+  category: 140,
+  cost: 115,
+  price: 115,
+  stock: 148,
+  actions: 188,
+} as const;
+const ALERT_TABLE_MIN_WIDTH =
+  Object.values(ALERT_COLUMNS).reduce((sum, width) => sum + width, 0) + ALERT_ROW_PADDING_H * 2;
 
 type FilterType = 'all' | 'unread' | 'out_of_stock' | 'low_stock';
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -37,10 +49,14 @@ const leave = () => {
 };
 
 // Close the native screens and show this page of the web app underneath
-const showWebPage = (path: string) => {
-  webBridge.navigate(path);
+const showWebPage = (path: string): boolean => {
+  if (!webBridge.navigate(path)) {
+    toast.error('Web စာမျက်နှာသို့ ဖွင့်၍မရပါ။ ထပ်မံကြိုးစားကြည့်ပါ။');
+    return false;
+  }
   if (router.canDismiss()) router.dismissAll();
   else router.replace('/');
+  return true;
 };
 
 const openSettings = () => router.push('/notification-settings');
@@ -87,14 +103,22 @@ export default function NotificationScreen() {
     toast.success('သတိပေးချက် အားလုံးကို ဖတ်ပြီးအဖြစ် မှတ်သားပြီးပါပြီ။');
   };
 
-  const handleGoToInventory = (item: StockAlertItem) => {
+  const openAlertDestination = (action: 'view' | 'order', item: StockAlertItem) => {
+    if (!item.productId) {
+      toast.error('ပစ္စည်းအချက်အလက် မပြည့်စုံပါ။');
+      return;
+    }
+    const targetPath = buildAlertDestination(action, item.productId);
+    if (!showWebPage(targetPath)) return;
     markAsRead(item.productId);
-    showWebPage('/inventory');
+  };
+
+  const handleGoToInventory = (item: StockAlertItem) => {
+    openAlertDestination('view', item);
   };
 
   const handleOrderStock = (item: StockAlertItem) => {
-    markAsRead(item.productId);
-    showWebPage('/purchasing');
+    openAlertDestination('order', item);
   };
 
   const filterOptions: { key: FilterType; label: string; icon: IoniconName }[] = [
@@ -258,31 +282,33 @@ export default function NotificationScreen() {
       );
     }
 
+    const tableMinWidth = isTablet ? Math.max(width - 32, ALERT_TABLE_MIN_WIDTH) : ALERT_TABLE_MIN_WIDTH;
+
     return (
       <View style={styles.tableCard}>
         <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={styles.tableScrollContent}>
-          <View style={[styles.tableInner, { minWidth: isTablet ? '100%' : 884 }]}>
+          <View style={[styles.tableInner, { minWidth: tableMinWidth }]}>
             <View style={styles.tableHeaderRow}>
               <View style={styles.colNo}>
-                <Text style={styles.th}>No</Text>
+                <Text style={styles.th}>စဉ်</Text>
               </View>
               <View style={styles.colName}>
-                <Text style={styles.th}>Name</Text>
+                <Text style={styles.th}>ပစ္စည်းအမည်</Text>
               </View>
               <View style={styles.colCategory}>
-                <Text style={styles.th}>Category</Text>
+                <Text style={styles.th}>အမျိုးအစား</Text>
               </View>
               <View style={styles.colCost}>
-                <Text style={[styles.th, styles.alignRight]}>Cost</Text>
+                <Text style={[styles.th, styles.alignRight]}>ဝယ်ဈေး</Text>
               </View>
               <View style={styles.colPrice}>
-                <Text style={[styles.th, styles.alignRight]}>Price</Text>
+                <Text style={[styles.th, styles.alignRight]}>ရောင်းဈေး</Text>
               </View>
               <View style={styles.colStock}>
-                <Text style={styles.th}>Stock / Status</Text>
+                <Text style={[styles.th, styles.alignRight]}>လက်ကျန် / အခြေအနေ</Text>
               </View>
               <View style={styles.colActions}>
-                <Text style={[styles.th, styles.alignCenter]}>Actions</Text>
+                <Text style={[styles.th, styles.alignCenter]}>လုပ်ဆောင်ချက်</Text>
               </View>
             </View>
 
@@ -330,7 +356,7 @@ export default function NotificationScreen() {
 
                     <View style={styles.colStock}>
                       <Text style={[styles.tdStock, { color: isOutOfStock ? '#dc2626' : '#b45309' }]}>
-                        {item.stockQty} PCS
+                        {item.stockQty} ခု
                       </Text>
                       <View style={isOutOfStock ? styles.statusOutBadge : styles.statusLowBadge}>
                         <Text style={isOutOfStock ? styles.statusOutBadgeText : styles.statusLowBadgeText}>
@@ -340,10 +366,20 @@ export default function NotificationScreen() {
                     </View>
 
                     <View style={styles.colActions}>
-                      <TouchableOpacity style={styles.actionBtn} activeOpacity={0.8} onPress={() => handleGoToInventory(item)}>
+                      <TouchableOpacity
+                        style={styles.actionBtn}
+                        activeOpacity={0.8}
+                        accessibilityLabel={`${item.productName} ကြည့်မယ်`}
+                        onPress={() => handleGoToInventory(item)}
+                      >
                         <Text style={styles.actionBtnText}>ကြည့်မယ်</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity style={styles.actionBtn} activeOpacity={0.8} onPress={() => handleOrderStock(item)}>
+                      <TouchableOpacity
+                        style={styles.actionBtn}
+                        activeOpacity={0.8}
+                        accessibilityLabel={`${item.productName} မှာမယ်`}
+                        onPress={() => handleOrderStock(item)}
+                      >
                         <Text style={styles.actionBtnText}>မှာမယ်</Text>
                       </TouchableOpacity>
                     </View>
@@ -362,7 +398,7 @@ export default function NotificationScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={leave} hitSlop={10} accessibilityLabel="Back">
+          <TouchableOpacity onPress={leave} hitSlop={10} accessibilityLabel="နောက်သို့">
             <Ionicons name="arrow-back" size={24} color={PRIMARY} />
           </TouchableOpacity>
           <View style={styles.flex}>
@@ -458,7 +494,7 @@ export default function NotificationScreen() {
           {/* Filters */}
           <View style={styles.filterSection}>
             <View style={styles.filterHeaderRow}>
-              <Text style={styles.filterSectionTitle}>Filters များ:</Text>
+              <Text style={styles.filterSectionTitle}>စစ်ထုတ်ရန်:</Text>
               <TouchableOpacity style={styles.settingsShortcutBtn} activeOpacity={0.75} onPress={openSettings}>
                 <Ionicons name="settings-outline" size={16} color="#4338ca" />
                 <Text style={styles.settingsShortcutText}>လက်ကျန်နည်း သတ်မှတ်ချက်: ≤ {lowStockThreshold} ခု (ပြင်ရန်)</Text>
@@ -656,28 +692,41 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingHorizontal: ALERT_ROW_PADDING_H,
     borderBottomWidth: 1.2,
     borderBottomColor: '#e2e8f0',
     backgroundColor: '#f8fafc',
   },
-  th: { fontSize: 14, fontWeight: '800', color: '#0f172a' },
+  th: { fontSize: 13.5, fontWeight: '800', color: '#0f172a' },
   tableRow: {
     width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingHorizontal: ALERT_ROW_PADDING_H,
     borderBottomWidth: 1,
     borderBottomColor: '#f1f5f9',
   },
-  colNo: { width: 48, justifyContent: 'center' },
-  colName: { width: 220, paddingRight: 16, justifyContent: 'center' },
-  colCategory: { width: 140, paddingRight: 14, justifyContent: 'center' },
-  colCost: { width: 95, paddingRight: 12, alignItems: 'flex-end', justifyContent: 'center' },
-  colPrice: { width: 95, paddingRight: 12, alignItems: 'flex-end', justifyContent: 'center' },
-  colStock: { width: 125, paddingRight: 10, justifyContent: 'center', gap: 4 },
-  colActions: { width: 165, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  colNo: { width: ALERT_COLUMNS.no, justifyContent: 'center' },
+  colName: { width: ALERT_COLUMNS.name, paddingRight: 16, justifyContent: 'center' },
+  colCategory: { width: ALERT_COLUMNS.category, paddingRight: 14, justifyContent: 'center' },
+  colCost: { width: ALERT_COLUMNS.cost, paddingRight: 16, alignItems: 'flex-end', justifyContent: 'center' },
+  colPrice: { width: ALERT_COLUMNS.price, paddingRight: 16, alignItems: 'flex-end', justifyContent: 'center' },
+  colStock: {
+    width: ALERT_COLUMNS.stock,
+    paddingLeft: 10,
+    paddingRight: 12,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  colActions: {
+    width: ALERT_COLUMNS.actions,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
   noColCell: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#2563eb' },
   tdNo: { fontSize: 14, fontWeight: '700', color: '#64748b' },
@@ -687,9 +736,9 @@ const styles = StyleSheet.create({
   tdCost: { fontSize: 14, fontWeight: '800', color: '#0f172a', textAlign: 'right' },
   tdPrice: { fontSize: 14, fontWeight: '800', color: '#0f172a', textAlign: 'right' },
   tdMmkUnit: { fontSize: 10.5, fontWeight: '800', color: '#64748b', marginTop: 1, textAlign: 'right' },
-  tdStock: { fontSize: 14, fontWeight: '800', color: '#0f172a' },
+  tdStock: { fontSize: 14, fontWeight: '800', color: '#0f172a', textAlign: 'right' },
   statusOutBadge: {
-    alignSelf: 'flex-start',
+    alignSelf: 'flex-end',
     backgroundColor: '#fee2e2',
     borderWidth: 1,
     borderColor: '#fca5a5',
@@ -699,7 +748,7 @@ const styles = StyleSheet.create({
   },
   statusOutBadgeText: { fontSize: 11, fontWeight: '800', color: '#dc2626' },
   statusLowBadge: {
-    alignSelf: 'flex-start',
+    alignSelf: 'flex-end',
     backgroundColor: '#fef3c7',
     borderWidth: 1,
     borderColor: '#fcd34d',
